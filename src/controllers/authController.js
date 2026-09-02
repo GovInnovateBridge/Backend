@@ -8,10 +8,11 @@ const generateToken = (id, role) => {
 };
 
 // 1. REGISTER (Generates OTP)
+// 1. REGISTER (Updated for Phase 0 Schema)
 exports.register = async (req, res) => {
-    const { email, password, role } = req.body;
+    const { name, email, password, role, organization, dpiitNumber } = req.body;
 
-    if (role === 'government' && !email.endsWith('@gov.in') && !email.endsWith('@nic.in')) {
+    if (role === 'NODAL_OFFICER' && !email.endsWith('@gov.in') && !email.endsWith('@nic.in')) {
         return res.status(403).json({ message: 'Government roles require @gov.in or @nic.in email' });
     }
 
@@ -23,9 +24,18 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+        const otpExpires = Date.now() + 10 * 60 * 1000;
 
-        user = await User.create({ email, password: hashedPassword, role, otp, otpExpires });
+        user = await User.create({ 
+            name,
+            email, 
+            password: hashedPassword, 
+            role,
+            organization,
+            dpiitNumber,
+            otp, 
+            otpExpires 
+        });
 
         const message = `Your SIH Sahyog verification code is: ${otp}. It expires in 10 minutes.`;
         
@@ -35,7 +45,7 @@ exports.register = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
-};
+};   
 
 // 2. VERIFY OTP
 exports.verifyOTP = async (req, res) => {
