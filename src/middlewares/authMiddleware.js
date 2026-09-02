@@ -1,28 +1,31 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-const protect = (req, res, next) => {
-    let token = req.headers.authorization;
-    if (token && token.startsWith('Bearer')) {
+// Authenticate: Verifies token and attaches user to request
+exports.protect = async (req, res, next) => {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
-            token = token.split(' ')[1];
+            token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = decoded; // Contains id and role
+            // Fetch user minus the password
+            req.user = await User.findById(decoded.id).select('-password');
             next();
         } catch (error) {
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            return res.status(401).json({ message: 'Not authorized, token failed' });
         }
-    } else {
-        res.status(401).json({ message: 'Not authorized, no token' });
+    }
+    if (!token) {
+        return res.status(401).json({ message: 'Not authorized, no token' });
     }
 };
 
-const authorize = (...roles) => {
+// Authorize: Restricts route to specific roles [SAH-P1-K02]
+exports.authorize = (...allowedRoles) => {
     return (req, res, next) => {
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json({ message: 'User role not authorized' });
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({ error: "Forbidden: insufficient role" });
         }
         next();
     };
 };
-
-module.exports = { protect, authorize };
