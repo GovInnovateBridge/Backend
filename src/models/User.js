@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true }, // PDF calls this passwordHash, we use password
     role: { 
         type: String, 
-        enum: ['NODAL_OFFICER', 'STARTUP_FOUNDER', 'VIEWER'], 
+        enum: ['NODAL_OFFICER', 'STARTUP_FOUNDER', 'VIEWER', 'JURY_MEMBER'], 
         required: true 
     },
     organization: { type: String }, // For Gov: Department Name. For Startup: Company Name.

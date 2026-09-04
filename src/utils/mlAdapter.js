@@ -57,3 +57,28 @@ exports.maskPII = async (rawText) => {
     
     return redacted;
 };
+
+/**
+ * Simulates a Sandbox Test environment run.
+ * Expected ML Endpoint: POST /sandbox-run
+ */
+exports.runSandboxSimulation = async (proposalId) => {
+    try {
+        if (ML_SERVICE_URL) {
+            // Attempt to call real ML microservice Sandbox engine
+            const response = await axios.post(`${ML_SERVICE_URL}/sandbox-run`, { proposalId });
+            return response.data;
+        }
+    } catch (error) {
+        console.warn("⚠️ ML Service unavailable for Sandbox, using mock metrics.");
+    }
+
+    // Mock metrics generator for Demo
+    return {
+        latencyMs: Math.floor(Math.random() * 200) + 50,    // 50-250ms
+        uptimePercent: 99 + Math.random(),                  // 99.0 - 99.99%
+        accuracyScore: Math.floor(Math.random() * 15) + 85, // 85-100%
+        memoryUsageMb: Math.floor(Math.random() * 512) + 128, // 128-640MB
+        lastRunAt: new Date()
+    };
+};

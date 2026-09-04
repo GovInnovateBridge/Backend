@@ -7,83 +7,78 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/govinnovat
 
 async function runTests() {
     try {
-        console.log("🚀 Starting Automated API Tests for Phase 2...\n");
+        console.log("🚀 Starting Automated API Tests for Phases 2, 3 & 4...\n");
 
-        // Connect to DB directly to verify test users automatically
         await mongoose.connect(MONGO_URI);
         const User = require('./src/models/User');
 
-        // 1. Register Nodal Officer
-        console.log("📝 1. Registering Nodal Officer...");
-        await axios.post(`${BASE_URL}/auth/register`, {
-            name: "Govt Nodal", email: "nodal4@gov.in", password: "password123", role: "NODAL_OFFICER"
-        }).catch(() => {}); // Ignore error if already registered
+        const suffix = Date.now().toString().slice(-5);
+        const nodalEmail = `nodal_${suffix}@gov.in`;
+        const startupEmail = `ceo_${suffix}@startup.com`;
+        const juryEmail = `jury_${suffix}@expert.com`;
 
-        // Force verify user in DB for testing
-        await User.updateOne({ email: "nodal4@gov.in" }, { isVerified: true });
+        // --- AUTHENTICATION ---
+        console.log("📝 1. Registering Users (Nodal, Startup, Jury)...");
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Govt Nodal", email: nodalEmail, password: "password123", role: "NODAL_OFFICER" });
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Startup CEO", email: startupEmail, password: "password123", role: "STARTUP_FOUNDER" });
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Jury Expert", email: juryEmail, password: "password123", role: "JURY_MEMBER" });
 
-        const nodalLogin = await axios.post(`${BASE_URL}/auth/login`, {
-            email: "nodal4@gov.in", password: "password123"
-        });
-        const nodalToken = nodalLogin.data.token;
-        console.log("✅ Nodal Officer Logged In. Token received.\n");
+        // Auto verify
+        await User.updateMany({ email: { $in: [nodalEmail, startupEmail, juryEmail] } }, { isVerified: true });
 
-        // 2. Create Challenge
-        console.log("📝 2. Nodal Officer creating a Challenge...");
+        const nodalToken = (await axios.post(`${BASE_URL}/auth/login`, { email: nodalEmail, password: "password123" })).data.token;
+        const startupToken = (await axios.post(`${BASE_URL}/auth/login`, { email: startupEmail, password: "password123" })).data.token;
+        const juryToken = (await axios.post(`${BASE_URL}/auth/login`, { email: juryEmail, password: "password123" })).data.token;
+        
+        console.log("✅ All Tokens received.\n");
+
+        // --- PHASE 2: CHALLENGE & PROPOSAL ---
+        console.log("📝 2. Nodal Officer creating & publishing Challenge...");
         const challengeRes = await axios.post(`${BASE_URL}/challenges/create`, {
-            title: "Smart Traffic System",
-            problemStatementRaw: "We need an AI solution for traffic management.",
-            evaluationDeadline: "2026-12-31T23:59:59Z",
-            pilotBudgetInr: 2000000,
-            departmentName: "Dept of Traffic",
-            category: "AI_ML"
+            title: "Smart Traffic System", problemStatementRaw: "We need an AI solution for traffic management.", evaluationDeadline: "2026-12-31T23:59:59Z", pilotBudgetInr: 2000000, departmentName: "Dept of Traffic", category: "AI_ML"
         }, { headers: { Authorization: `Bearer ${nodalToken}` } });
         const challengeId = challengeRes.data.challenge._id;
-        console.log(`✅ Challenge Created! ID: ${challengeId} (Status: DRAFT)\n`);
+        await axios.patch(`${BASE_URL}/challenges/${challengeId}/publish`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log(`✅ Challenge Created & Published! ID: ${challengeId}\n`);
 
-        // 3. Publish Challenge
-        console.log("📝 3. Publishing the Challenge...");
-        await axios.patch(`${BASE_URL}/challenges/${challengeId}/publish`, {}, {
-            headers: { Authorization: `Bearer ${nodalToken}` }
-        });
-        console.log("✅ Challenge Published successfully!\n");
-
-        // 4. Register and Login Startup Founder
-        console.log("📝 4. Registering Startup Founder...");
-        await axios.post(`${BASE_URL}/auth/register`, {
-            name: "Startup CEO", email: "ceo4@startup.com", password: "password123", role: "STARTUP_FOUNDER"
-        }).catch(() => {});
-
-        // Force verify user in DB for testing
-        await User.updateOne({ email: "ceo4@startup.com" }, { isVerified: true });
-
-        const startupLogin = await axios.post(`${BASE_URL}/auth/login`, {
-            email: "ceo4@startup.com", password: "password123"
-        });
-        const startupToken = startupLogin.data.token;
-        console.log("✅ Startup Logged In. Token received.\n");
-
-        // 5. Submit Two-Envelope Proposal
-        console.log("📝 5. Startup submitting Two-Envelope Proposal...");
+        console.log("📝 3. Startup submitting Two-Envelope Proposal...");
         const proposalRes = await axios.post(`${BASE_URL}/proposals/submit`, {
-            challengeId: challengeId,
-            dpiitNumber: "DPIIT12345",
-            startupName: "AI Solutions Pvt Ltd",
-            executiveSummary: "Our solution uses YOLOv8.",
-            techStack: ["YOLOv8", "Python", "Node.js"],
-            technicalArchitecture: "CCTV -> Edge Node -> Cloud",
-            rawText: "AI Solutions founder contact is ceo4@startup.com",
-            trialBudgetInr: 500000,
-            commercialUnitBudgetInr: 100000,
-            totalGrantRequestedInr: 2000000,
-            milestones: [
-                { milestoneCode: "M1", paymentPercentage: 40, amountInr: 800000, deliverableTarget: "Pilot" }
-            ]
+            challengeId: challengeId, dpiitNumber: "DPIIT12345", startupName: "AI Solutions Pvt Ltd", executiveSummary: "YOLOv8 approach.", techStack: ["YOLOv8"], technicalArchitecture: "CCTV -> Edge Node -> Cloud", rawText: "Contact ceo@startup.com", trialBudgetInr: 500000, commercialUnitBudgetInr: 100000, totalGrantRequestedInr: 2000000, milestones: []
         }, { headers: { Authorization: `Bearer ${startupToken}` } });
+        const proposalId = proposalRes.data.proposalId;
+        console.log(`✅ Proposal Submitted! ID: ${proposalId}\n`);
 
-        console.log("✅ Proposal Submitted Successfully!");
-        console.log("Response Details:", proposalRes.data);
-        console.log("\n🎉 ALL TESTS PASSED SUCCESSFULLY! Phase 2 is working perfectly.");
+        // --- PHASE 3: EVALUATION ---
+        console.log("📝 4. Nodal Officer starting Evaluation Phase...");
+        await axios.patch(`${BASE_URL}/challenges/${challengeId}/evaluate`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log("✅ Evaluation phase active.\n");
+
+        console.log("📝 5. Jury fetching proposals (Envelope B should be locked)...");
+        const fetchRes = await axios.get(`${BASE_URL}/proposals/challenge/${challengeId}`, { headers: { Authorization: `Bearer ${juryToken}` } });
+        if (fetchRes.data.proposals[0].envelope_b_financial) {
+            throw new Error("SECURITY BREACH: Financial data exposed to Jury!");
+        }
+        console.log("✅ Security Passed: Financial data is hidden from Jury.\n");
+
+        console.log("📝 6. Jury shortlisting proposal...");
+        await axios.patch(`${BASE_URL}/proposals/${proposalId}/evaluate`, { status: "SHORTLISTED" }, { headers: { Authorization: `Bearer ${juryToken}` } });
+        console.log("✅ Proposal SHORTLISTED.\n");
+
+        // --- PHASE 4: SANDBOX ---
+        console.log("📝 7. Nodal Officer starting Sandbox Phase...");
+        await axios.patch(`${BASE_URL}/challenges/${challengeId}/sandbox`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log("✅ Sandbox phase active.\n");
+
+        console.log("📝 8. Startup running Sandbox Simulation...");
+        const sandboxRes = await axios.post(`${BASE_URL}/proposals/${proposalId}/sandbox-run`, {}, { headers: { Authorization: `Bearer ${startupToken}` } });
+        console.log("✅ Sandbox Run Complete. Metrics: ", sandboxRes.data.metrics);
+        console.log("\n");
+
+        console.log("📝 9. Nodal Officer awarding Grant...");
+        await axios.patch(`${BASE_URL}/proposals/${proposalId}/award`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log("✅ Grant AWARDED successfully!\n");
+
+        console.log("🎉 ALL TESTS PASSED SUCCESSFULLY! Phases 2, 3, & 4 are working perfectly.");
 
     } catch (error) {
         console.error("❌ Test Failed:", error.response ? error.response.data : error.message);

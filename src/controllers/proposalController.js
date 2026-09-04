@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
-const { maskPII } = require('../utils/mlAdapter');
+const { maskPII, runSandboxSimulation } = require('../utils/mlAdapter');
 
 // POST /api/proposals/submit
 // Startup submits a two-envelope proposal
@@ -173,6 +173,90 @@ exports.evaluateProposal = async (req, res) => {
 
     } catch (error) {
         console.error("Error evaluating proposal:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// POST /api/proposals/:id/sandbox-run
+// Startup triggers a simulated Sandbox test
+exports.runSandboxTest = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
+
+        if (proposal.submittedBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You can only test your own proposal.' });
+        }
+
+        if (proposal.status !== 'SHORTLISTED') {
+            return res.status(400).json({ message: 'Proposal must be SHORTLISTED to enter Sandbox.' });
+        }
+
+        const challenge = await Challenge.findById(proposal.challenge);
+        if (challenge.status !== 'SANDBOX_ACTIVE') {
+            return res.status(400).json({ message: 'The parent challenge is not in the SANDBOX_ACTIVE phase.' });
+        }
+
+        // Run Mock Sandbox metrics generator
+        const metrics = await runSandboxSimulation(id);
+        
+        proposal.sandboxMetrics = metrics;
+        proposal.status = 'SANDBOX_TESTED';
+        await proposal.save();
+
+        res.status(200).json({
+            message: 'Sandbox test completed successfully!',
+            metrics: proposal.sandboxMetrics,
+            status: proposal.status
+        });
+    } catch (error) {
+        console.error("Error running sandbox:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/award
+// Nodal Officer awards the grant
+exports.awardGrant = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
+
+        const challenge = await Challenge.findById(proposal.challenge);
+        
+        if (challenge.createdBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You can only award grants for your own challenges.' });
+        }
+
+        if (proposal.status !== 'SANDBOX_TESTED') {
+            return res.status(400).json({ message: 'Proposal must pass the Sandbox phase (SANDBOX_TESTED) to be awarded.' });
+        }
+
+        proposal.status = 'AWARDED';
+        await proposal.save();
+
+        res.status(200).json({
+            message: 'Congratulations! The grant has been successfully AWARDED to the startup.',
+            proposal
+        });
+    } catch (error) {
+        console.error("Error awarding grant:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };

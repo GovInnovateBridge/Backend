@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { submitProposal, getProposalsForChallenge, evaluateProposal } = require('../controllers/proposalController');
-const { verifyToken, verifyStartup, verifyJury } = require('../middlewares/authMiddleware');
+const { submitProposal, getProposalsForChallenge, evaluateProposal, runSandboxTest, awardGrant } = require('../controllers/proposalController');
+const { verifyToken, verifyStartup, verifyJury, verifyNodal } = require('../middlewares/authMiddleware');
 const lockEnvelopeB = require('../middlewares/lockEnvelopeBMiddleware');
 
 // POST /api/proposals/submit
@@ -15,5 +15,13 @@ router.get('/challenge/:challengeId', verifyToken, lockEnvelopeB, getProposalsFo
 // PATCH /api/proposals/:id/evaluate
 // Jury only
 router.patch('/:id/evaluate', verifyToken, verifyJury, evaluateProposal);
+
+// POST /api/proposals/:id/sandbox-run
+// Startup only
+router.post('/:id/sandbox-run', verifyToken, verifyStartup, runSandboxTest);
+
+// PATCH /api/proposals/:id/award
+// Nodal Officer only
+router.patch('/:id/award', verifyToken, verifyNodal, awardGrant);
 
 module.exports = router;

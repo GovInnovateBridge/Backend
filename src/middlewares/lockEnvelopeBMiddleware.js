@@ -25,9 +25,9 @@ const lockEnvelopeB = async (req, res, next) => {
                 const isEvaluationActive = challenge.status === 'EVALUATING' || 
                                           (challenge.evaluationDeadline && challenge.evaluationDeadline > now);
 
-                // Rule 1: Jury members can only unlock during active evaluation windows
-                if (req.user.role === 'JURY_MEMBER' && isEvaluationActive) {
-                    req.envelopeBUnlocked = true;
+                // Rule 1: Jury members NEVER unlock Envelope B (Blind Evaluation)
+                if (req.user.role === 'JURY_MEMBER') {
+                    req.envelopeBUnlocked = false;
                 } 
                 // Rule 2: Nodal Officers can unlock during evaluation or active sandbox phases
                 else if (req.user.role === 'NODAL_OFFICER') {
