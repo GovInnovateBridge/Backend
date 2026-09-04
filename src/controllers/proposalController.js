@@ -205,6 +205,10 @@ exports.runSandboxTest = async (req, res) => {
             return res.status(400).json({ message: 'The parent challenge is not in the SANDBOX_ACTIVE phase.' });
         }
 
+        if (proposal.escrowStatus !== 'FROZEN') {
+            return res.status(400).json({ message: 'Trial budget must be frozen in escrow before running the Sandbox.' });
+        }
+
         // Run Mock Sandbox metrics generator
         const metrics = await runSandboxSimulation(id);
         
@@ -257,6 +261,87 @@ exports.awardGrant = async (req, res) => {
         });
     } catch (error) {
         console.error("Error awarding grant:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// POST /api/proposals/:id/agreement/generate
+// Nodal Officer generates a dummy agreement for a shortlisted proposal
+exports.generateAgreement = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
+
+        const challenge = await Challenge.findById(proposal.challenge);
+        if (challenge.createdBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You can only generate agreements for your own challenges.' });
+        }
+
+        if (proposal.status !== 'SHORTLISTED') {
+            return res.status(400).json({ message: 'Proposal must be SHORTLISTED to generate an agreement.' });
+        }
+
+        proposal.agreementStatus = 'PENDING_SIGNATURE';
+        proposal.agreementHash = 'HASH_' + require('crypto').randomBytes(16).toString('hex').toUpperCase();
+        await proposal.save();
+
+        res.status(200).json({
+            message: 'Agreement generated successfully. Waiting for startup signature.',
+            agreementHash: proposal.agreementHash,
+            agreementStatus: proposal.agreementStatus
+        });
+    } catch (error) {
+        console.error("Error generating agreement:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/agreement/sign
+// Startup signs the agreement, triggering automatic escrow freeze
+exports.signAgreement = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
+
+        if (proposal.submittedBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You can only sign your own agreement.' });
+        }
+
+        if (proposal.agreementStatus !== 'PENDING_SIGNATURE') {
+            return res.status(400).json({ message: 'No pending agreement found to sign.' });
+        }
+
+        // Sign agreement
+        proposal.agreementStatus = 'SIGNED';
+        
+        // Auto-freeze escrow upon signing
+        proposal.escrowStatus = 'FROZEN';
+        
+        await proposal.save();
+
+        res.status(200).json({
+            message: 'Agreement signed successfully! Trial budget is now FROZEN in smart escrow.',
+            agreementStatus: proposal.agreementStatus,
+            escrowStatus: proposal.escrowStatus
+        });
+    } catch (error) {
+        console.error("Error signing agreement:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };

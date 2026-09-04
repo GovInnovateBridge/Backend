@@ -64,6 +64,15 @@ async function runTests() {
         await axios.patch(`${BASE_URL}/proposals/${proposalId}/evaluate`, { status: "SHORTLISTED" }, { headers: { Authorization: `Bearer ${juryToken}` } });
         console.log("✅ Proposal SHORTLISTED.\n");
 
+        // --- PHASE 4B: AGREEMENT & ESCROW ---
+        console.log("📝 6b. Nodal Officer generating Agreement...");
+        const agreementRes = await axios.post(`${BASE_URL}/proposals/${proposalId}/agreement/generate`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log(`✅ Agreement Generated. Hash: ${agreementRes.data.agreementHash}\n`);
+
+        console.log("📝 6c. Startup signing Agreement (Triggers Escrow Freeze)...");
+        const signRes = await axios.patch(`${BASE_URL}/proposals/${proposalId}/agreement/sign`, {}, { headers: { Authorization: `Bearer ${startupToken}` } });
+        console.log(`✅ Agreement Signed! Escrow Status: ${signRes.data.escrowStatus}\n`);
+
         // --- PHASE 4: SANDBOX ---
         console.log("📝 7. Nodal Officer starting Sandbox Phase...");
         await axios.patch(`${BASE_URL}/challenges/${challengeId}/sandbox`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
@@ -78,7 +87,7 @@ async function runTests() {
         await axios.patch(`${BASE_URL}/proposals/${proposalId}/award`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
         console.log("✅ Grant AWARDED successfully!\n");
 
-        console.log("🎉 ALL TESTS PASSED SUCCESSFULLY! Phases 2, 3, & 4 are working perfectly.");
+        console.log("🎉 ALL TESTS PASSED SUCCESSFULLY! Phases 2, 3, 4, and 4B are working perfectly.");
 
     } catch (error) {
         console.error("❌ Test Failed:", error.response ? error.response.data : error.message);

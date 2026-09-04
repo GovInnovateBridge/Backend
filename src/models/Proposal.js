@@ -53,6 +53,21 @@ const proposalSchema = new mongoose.Schema({
         lastRunAt: { type: Date }
     },
 
+    // =========================================================================
+    // AGREEMENT & SMART ESCROW
+    // =========================================================================
+    agreementStatus: {
+        type: String,
+        enum: ["NOT_GENERATED", "PENDING_SIGNATURE", "SIGNED"],
+        default: "NOT_GENERATED"
+    },
+    escrowStatus: {
+        type: String,
+        enum: ["NOT_INITIATED", "FROZEN", "RELEASED"],
+        default: "NOT_INITIATED"
+    },
+    agreementHash: { type: String }, // Stores dummy document hash
+
     status: {
         type: String,
         enum: ["SUBMITTED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED"],
