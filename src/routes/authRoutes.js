@@ -12,7 +12,7 @@ router.get('/me', verifyToken, getMe);
 
 // Example of how to use specialized RBAC middleware
 router.get('/government-only', verifyToken, verifyNodal, (req, res) => {
-    res.json({ message: 'Welcome to the government portal' });
+    res.json({ message: 'Welcome to the Government Portal' });
 });
 
 module.exports = router;
