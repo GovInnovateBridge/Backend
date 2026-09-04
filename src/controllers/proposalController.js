@@ -88,3 +88,91 @@ exports.submitProposal = async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
+
+// GET /api/proposals/challenge/:challengeId
+// Jury or Nodal Officer fetches proposals for evaluation
+exports.getProposalsForChallenge = async (req, res) => {
+    try {
+        const { challengeId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(challengeId)) {
+            return res.status(400).json({ message: 'Invalid challenge ID' });
+        }
+
+        const challenge = await Challenge.findById(challengeId);
+        if (!challenge) {
+            return res.status(404).json({ message: 'Challenge not found' });
+        }
+
+        // Fetch proposals for this challenge
+        let proposals = await Proposal.find({ challenge: challengeId })
+            // Sort by ML Matchmaking score (highest first) for the dashboard
+            .sort({ 'envelope_a_technical.kpiMatchVector.overallMatchScore': -1 });
+
+        // Enforce Envelope B Lock based on middleware
+        // lockEnvelopeBMiddleware sets req.envelopeBUnlocked
+        if (!req.envelopeBUnlocked) {
+            proposals = proposals.map(proposal => {
+                const p = proposal.toObject();
+                // Scrub the financial data completely to ensure blind evaluation
+                delete p.envelope_b_financial;
+                return p;
+            });
+        }
+
+        res.status(200).json({
+            message: 'Proposals fetched successfully',
+            envelopeBUnlocked: req.envelopeBUnlocked || false,
+            count: proposals.length,
+            proposals
+        });
+
+    } catch (error) {
+        console.error("Error fetching proposals:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/evaluate
+// Jury evaluates a proposal (SHORTLISTED or REJECTED)
+exports.evaluateProposal = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, comments } = req.body; // e.g. status: "SHORTLISTED", comments: "Good approach"
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        if (!["SHORTLISTED", "REJECTED"].includes(status)) {
+            return res.status(400).json({ message: 'Invalid status. Must be SHORTLISTED or REJECTED.' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
+
+        const challenge = await Challenge.findById(proposal.challenge);
+        if (challenge.status !== 'EVALUATING') {
+            return res.status(400).json({ message: 'Challenge is not in the EVALUATING phase.' });
+        }
+
+        proposal.status = status;
+        
+        // MVP: We could store comments in a new array or field, but for now we just change status.
+        // If we want to save comments, we should add it to the Proposal schema, or log it.
+        // We will just update status for this phase.
+
+        await proposal.save();
+
+        res.status(200).json({
+            message: `Proposal successfully ${status.toLowerCase()}`,
+            proposal
+        });
+
+    } catch (error) {
+        console.error("Error evaluating proposal:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};

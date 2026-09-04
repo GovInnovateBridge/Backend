@@ -4,13 +4,14 @@ Backend server for the **GovInnovateBridge** platform built with Node.js, Expres
 
 ---
 
-## 🚀 Features (Phase 1 & Phase 2)
+## 🚀 Features (Phase 1, Phase 2 & Phase 3)
 
 - **Modular Architecture**: Clean separation between server setup (`server.js`), Express configuration (`app.js`), controllers, routes, models, and middlewares.
 - **Role-Based Access Control (RBAC)**: Custom middlewares for authentication and fine-grained role authorization (`NODAL_OFFICER`, `STARTUP_FOUNDER`, `JURY_MEMBER`).
 - **Challenge Ingestion**: Government Nodal Officers can create and publish problem statements with auto-extracted KPIs.
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
 - **ML Adapter Layer**: Seamless integration with ML microservices (`/extract-kpis` and `/mask-pii`) with built-in zero-crash fallback mechanisms.
+- **Jury Matchmaking Dashboard**: Fetch proposals securely sorted by ML scores. Vault Lock middleware automatically scrubs financial data to guarantee unbiased blind evaluation.
 - **Public Challenge Discovery APIs**: Paginated listing, detailed public challenge briefs with whitelisted fields, and lifecycle stage tracking.
 
 ---
@@ -76,21 +77,23 @@ Middlewares defined in `src/middlewares/authMiddleware.js`:
 
 ---
 
-### 3. Challenge Ingestion Routes (`/api/challenges`)
+### 3. Challenge Ingestion & Management Routes (`/api/challenges`)
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/challenges/create` | Create a new DRAFT challenge (auto-extracts KPIs) | `NODAL_OFFICER` |
 | `PATCH` | `/api/challenges/:id/publish` | Publish a drafted challenge | `NODAL_OFFICER` |
+| `PATCH` | `/api/challenges/:id/evaluate` | Start evaluation phase (close submissions) | `NODAL_OFFICER` |
 
 ---
 
-### 4. Proposal Submission Routes (`/api/proposals`)
+### 4. Proposal & Evaluation Routes (`/api/proposals`)
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (with PII Masking & Vault Encryption) | `STARTUP_FOUNDER` |
-
+| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (with PII Masking) | `STARTUP_FOUNDER` |
+| `GET` | `/api/proposals/challenge/:challengeId` | Fetch proposals for dashboard (Financials locked) | `JURY_MEMBER`, `NODAL_OFFICER` |
+| `PATCH` | `/api/proposals/:id/evaluate` | Change proposal status (`SHORTLISTED` / `REJECTED`) | `JURY_MEMBER` |
 
 #### Example Response (`GET /api/challenges/public`):
 ```json
