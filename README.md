@@ -4,12 +4,14 @@ Backend server for the **GovInnovateBridge** platform built with Node.js, Expres
 
 ---
 
-## 🚀 Features & Phase 1 Updates
+## 🚀 Features (Phase 1 & Phase 2)
 
 - **Modular Architecture**: Clean separation between server setup (`server.js`), Express configuration (`app.js`), controllers, routes, models, and middlewares.
 - **Role-Based Access Control (RBAC)**: Custom middlewares for authentication and fine-grained role authorization (`NODAL_OFFICER`, `STARTUP_FOUNDER`, `JURY_MEMBER`).
+- **Challenge Ingestion**: Government Nodal Officers can create and publish problem statements with auto-extracted KPIs.
+- **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
+- **ML Adapter Layer**: Seamless integration with ML microservices (`/extract-kpis` and `/mask-pii`) with built-in zero-crash fallback mechanisms.
 - **Public Challenge Discovery APIs**: Paginated listing, detailed public challenge briefs with whitelisted fields, and lifecycle stage tracking.
-- **Input Sanitization & Data Safety**: Strict ObjectId validation, field whitelisting, dynamic pagination controls, and clean error handling.
 
 ---
 
@@ -71,6 +73,24 @@ Middlewares defined in `src/middlewares/authMiddleware.js`:
 | `GET` | `/api/challenges/public` | `?page=1&limit=10` | Fetch paginated list of published challenges | No |
 | `GET` | `/api/challenges/public/:challengeId` | `:challengeId` | Fetch public brief of a published challenge | No |
 | `GET` | `/api/challenges/public/:challengeId/status` | `:challengeId` | Fetch the current lifecycle status of a challenge | No |
+
+---
+
+### 3. Challenge Ingestion Routes (`/api/challenges`)
+
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/challenges/create` | Create a new DRAFT challenge (auto-extracts KPIs) | `NODAL_OFFICER` |
+| `PATCH` | `/api/challenges/:id/publish` | Publish a drafted challenge | `NODAL_OFFICER` |
+
+---
+
+### 4. Proposal Submission Routes (`/api/proposals`)
+
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (with PII Masking & Vault Encryption) | `STARTUP_FOUNDER` |
+
 
 #### Example Response (`GET /api/challenges/public`):
 ```json

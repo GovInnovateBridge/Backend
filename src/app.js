@@ -10,5 +10,7 @@ app.use(cors());
 // Mount Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/challenges/public', require('./routes/publicRoutes'));
+app.use('/api/challenges', require('./routes/challengeRoutes'));
+app.use('/api/proposals', require('./routes/proposalRoutes'));
 
 module.exports = app;
