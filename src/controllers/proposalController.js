@@ -7,7 +7,7 @@ const { maskPII, runSandboxSimulation } = require('../utils/mlAdapter');
 // Startup submits a two-envelope proposal
 exports.submitProposal = async (req, res) => {
     try {
-        const { challengeId, dpiitNumber, startupName, executiveSummary, techStack, technicalArchitecture, implementationPlan, rawText, trialBudgetInr, commercialUnitBudgetInr, totalGrantRequestedInr, milestones } = req.body;
+        const { challengeId, proposal_metadata, pre_requisite_clearance, assigned_evaluator_pool, internal_db_meta, envelope_a_technical, envelope_b_financial } = req.body;
 
         // 1. Validation Checks
         if (!mongoose.Types.ObjectId.isValid(challengeId)) {
@@ -30,49 +30,21 @@ exports.submitProposal = async (req, res) => {
             return res.status(400).json({ message: 'You have already submitted a proposal for this challenge.' });
         }
 
-        // 2. ML PII Masking (Envelope A)
-        const piiRedactedText = await maskPII(rawText);
-        
-        // Mocking matchmaking vector for now
-        const kpiMatchVector = {
-            overallMatchScore: Math.floor(Math.random() * 20) + 80, // Random score between 80-100
-            note: "Mocked matchmaking score"
-        };
-
-        // 3. Financial Payload Encryption (Envelope B)
-        // In a real scenario, this would be a proper AES encryption using a secure key
-        const encryptedPayload = Buffer.from(JSON.stringify({
-            trialBudgetInr, commercialUnitBudgetInr, totalGrantRequestedInr, milestones
-        })).toString('base64'); // Simple base64 encoding as a placeholder for actual encryption
-
         // Generate Submission Ref
-        const submissionRefNumber = `PROP-${new Date().getFullYear()}-${Math.floor(Math.random() * 100000)}`;
+        const submissionRefNumber = proposal_metadata?.proposal_id || `PROP-${new Date().getFullYear()}-${Math.floor(Math.random() * 100000)}`;
 
         // 4. Create and Save Proposal Document
         const newProposal = new Proposal({
             challenge: challengeId,
             submittedBy: req.user._id,
             submissionRefNumber,
-            envelope_a_technical: {
-                dpiitNumber,
-                startupName,
-                executiveSummary,
-                techStack,
-                technicalArchitecture,
-                implementationPlan,
-                rawText,
-                piiRedactedText,
-                kpiMatchVector
-            },
-            envelope_b_financial: {
-                trialBudgetInr,
-                commercialUnitBudgetInr,
-                totalGrantRequestedInr,
-                milestones,
-                encryptedPayload,
-                vaultLocked: true // Default locked state
-            },
-            status: 'SUBMITTED'
+            proposal_metadata,
+            pre_requisite_clearance,
+            assigned_evaluator_pool,
+            internal_db_meta,
+            envelope_a_technical,
+            envelope_b_financial,
+            vaultLocked: true // Always locked initially
         });
 
         await newProposal.save();
@@ -291,12 +263,48 @@ exports.generateAgreement = async (req, res) => {
 
         proposal.agreementStatus = 'PENDING_SIGNATURE';
         proposal.agreementHash = 'HASH_' + require('crypto').randomBytes(16).toString('hex').toUpperCase();
+        
+        // Mocking the detailed JSON Agreement payload based on the PDF format
+        proposal.agreementData = {
+            agreement_metadata: {
+                agreement_id: `SAHYOG/BGSE/${new Date().getFullYear()}/DEL/00147`,
+                platform: "Project Sahyog - B2G Smart Escrow & Procurement Innovation Sandbox",
+                document_type: "B2G Smart Escrow Pilot Agreement",
+                status: "ACTIVE",
+                version: "1.1",
+                document_hash_reference: "sha256:pending_on_smart_contract_deployment"
+            },
+            parties_involved: {
+                party_a: {
+                    role: "Nodal Agency",
+                    entity_name: "Directorate of Urban Traffic Management"
+                },
+                party_b: {
+                    role: "Innovator",
+                    entity_name: proposal.envelope_a_technical?.applicant_display_name || "Startup Name"
+                },
+                party_c: {
+                    role: "Smart Escrow Platform",
+                    entity_name: "GovEscrow Digital Trust Services Pvt. Ltd."
+                }
+            },
+            parallel_sandboxing_and_financials: {
+                actual_discovered_cost: proposal.envelope_b_financial?.pilot_execution_bid?.amount_inr || 1250000
+            },
+            dispute_resolution: {
+                deemed_approval_mechanism: {
+                    timer_days: 7
+                }
+            }
+        };
+
         await proposal.save();
 
         res.status(200).json({
             message: 'Agreement generated successfully. Waiting for startup signature.',
             agreementHash: proposal.agreementHash,
-            agreementStatus: proposal.agreementStatus
+            agreementStatus: proposal.agreementStatus,
+            agreementData: proposal.agreementData
         });
     } catch (error) {
         console.error("Error generating agreement:", error);

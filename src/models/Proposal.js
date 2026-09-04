@@ -6,41 +6,21 @@ const proposalSchema = new mongoose.Schema({
     submissionRefNumber: { type: String }, // e.g. "PROP-2026-99012"
 
     // =========================================================================
-    // COVER 1: ENVELOPE A (Technical Proposal - PII Masked for Jury)
+    // RICH JSON FORMATS (As per PDF specifications)
     // =========================================================================
-    envelope_a_technical: {
-        dpiitNumber: { type: String, required: true }, // Startup India DPIIT Recognition No.
-        startupName: { type: String },                 // Auto-fetched or verified via DPIIT
-        executiveSummary: { type: String, required: true },
-        techStack: [{ type: String }],                // Tech Stack (e.g., ["YOLOv8", "PyTorch", "TensorRT", "Node.js"])
-        technicalArchitecture: { type: String, required: true },
-        implementationPlan: { type: String },
-        
-        rawText: { type: String, required: true },
-        piiRedactedText: { type: String },           // Redacted text by ML Masker for Jury evaluation
-        kpiMatchVector: { type: Object }              // Vector similarity match by ML
-    },
+    proposal_metadata: { type: mongoose.Schema.Types.Mixed },
+    pre_requisite_clearance: { type: mongoose.Schema.Types.Mixed },
+    assigned_evaluator_pool: { type: String },
+    internal_db_meta: { type: mongoose.Schema.Types.Mixed },
 
-    // =========================================================================
-    // COVER 2: ENVELOPE B (Financial Proposal / Vault Encrypted)
-    // =========================================================================
-    envelope_b_financial: {
-        trialBudgetInr: { type: Number, required: true },          // Trial / Pilot phase budget
-        commercialUnitBudgetInr: { type: Number, required: true }, // Commercial per-unit / full deployment budget
-        totalGrantRequestedInr: { type: Number, required: true },   // Total grant funding requested
-        
-        milestones: [{
-            milestoneCode: { type: String },
-            paymentPercentage: { type: Number },
-            amountInr: { type: Number },
-            deliverableTarget: { type: String }
-        }],
-        
-        encryptedPayload: { type: String }, // AES-256 encrypted financial blob
-        vaultLocked: { type: Boolean, default: true },
-        unlockedAt: { type: Date },
-        unlockedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
-    },
+    // COVER 1: ENVELOPE A (Technical Proposal)
+    envelope_a_technical: { type: mongoose.Schema.Types.Mixed },
+
+    // COVER 2: ENVELOPE B (Financial Proposal)
+    envelope_b_financial: { type: mongoose.Schema.Types.Mixed },
+
+    // Vault Lock status for Envelope B
+    vaultLocked: { type: Boolean, default: true },
 
     // =========================================================================
     // SANDBOX TESTING & BENCHMARK METRICS
@@ -67,6 +47,7 @@ const proposalSchema = new mongoose.Schema({
         default: "NOT_INITIATED"
     },
     agreementHash: { type: String }, // Stores dummy document hash
+    agreementData: { type: mongoose.Schema.Types.Mixed }, // Detailed JSON Agreement
 
     status: {
         type: String,

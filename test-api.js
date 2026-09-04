@@ -11,6 +11,10 @@ async function runTests() {
 
         await mongoose.connect(MONGO_URI);
         const User = require('./src/models/User');
+        const Proposal = require('./src/models/Proposal');
+        
+        console.log("🧹 0. Wiping old proposals for clean test state...");
+        await Proposal.deleteMany({});
 
         const suffix = Date.now().toString().slice(-5);
         const nodalEmail = `nodal_${suffix}@gov.in`;
@@ -43,7 +47,26 @@ async function runTests() {
 
         console.log("📝 3. Startup submitting Two-Envelope Proposal...");
         const proposalRes = await axios.post(`${BASE_URL}/proposals/submit`, {
-            challengeId: challengeId, dpiitNumber: "DPIIT12345", startupName: "AI Solutions Pvt Ltd", executiveSummary: "YOLOv8 approach.", techStack: ["YOLOv8"], technicalArchitecture: "CCTV -> Edge Node -> Cloud", rawText: "Contact ceo@startup.com", trialBudgetInr: 500000, commercialUnitBudgetInr: 100000, totalGrantRequestedInr: 2000000, milestones: []
+            challengeId: challengeId,
+            proposal_metadata: {
+                proposal_id: "SAHYOG-PROP-2026-DEL-000913",
+                problem_statement_title: "Pothole & Traffic Anomaly Detection using Edge AI"
+            },
+            pre_requisite_clearance: {
+                dpiit_recognition_number: "DIPP123456",
+                applicant_entity_type: "DPIIT_RECOGNIZED_STARTUP"
+            },
+            envelope_a_technical: {
+                applicant_display_name: "TrafficSense AI Technologies Pvt. Ltd.",
+                executive_approach: "Our solution deploys a fine-tuned YOLOv8n model...",
+                system_architecture: [{ layer: "edge_inference", component: "YOLOv8n" }]
+            },
+            envelope_b_financial: {
+                pilot_execution_bid: {
+                    amount_inr: 1250000,
+                    currency: "INR"
+                }
+            }
         }, { headers: { Authorization: `Bearer ${startupToken}` } });
         const proposalId = proposalRes.data.proposalId;
         console.log(`✅ Proposal Submitted! ID: ${proposalId}\n`);

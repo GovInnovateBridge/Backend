@@ -4,7 +4,7 @@ Backend server for the **GovInnovateBridge** platform built with Node.js, Expres
 
 ---
 
-## 🚀 Features (Phase 1, 2, 3 & 4)
+## 🚀 Features (Phase 1, 2, 3, 4, 4B & 5)
 
 - **Modular Architecture**: Clean separation between server setup (`server.js`), Express configuration (`app.js`), controllers, routes, models, and middlewares.
 - **Role-Based Access Control (RBAC)**: Custom middlewares for authentication and fine-grained role authorization (`NODAL_OFFICER`, `STARTUP_FOUNDER`, `JURY_MEMBER`).
@@ -12,7 +12,9 @@ Backend server for the **GovInnovateBridge** platform built with Node.js, Expres
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
 - **ML Adapter Layer**: Seamless integration with ML microservices (`/extract-kpis` and `/mask-pii`) with built-in zero-crash fallback mechanisms.
 - **Jury Matchmaking Dashboard**: Fetch proposals securely sorted by ML scores. Vault Lock middleware automatically scrubs financial data to guarantee unbiased blind evaluation.
-- **Sandbox & Grant Management**: Startups simulate ML sandbox validations. Nodal officers automatically unlock financial envelopes during the Sandbox phase to award grants securely.
+- **Smart Escrow & Agreements (Phase 4B)**: Nodal Officers generate B2G Pilot Agreements. Startup signatures automatically freeze their Trial Budget into a simulated Smart Escrow.
+- **Sandbox & Grant Management**: Startups simulate ML sandbox validations (only possible if Escrow is FROZEN). Nodal officers automatically unlock financial envelopes during the Sandbox phase to award grants securely.
+- **Rich JSON Payloads (Phase 5)**: Supports deep, highly complex GovTech-grade JSON structures for proposals and agreements (e.g., DPDP compliance, infrastructure dependencies, IP rights).
 - **Public Challenge Discovery APIs**: Paginated listing, detailed public challenge briefs with whitelisted fields, and lifecycle stage tracking.
 
 ---
@@ -93,9 +95,11 @@ Middlewares defined in `src/middlewares/authMiddleware.js`:
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (with PII Masking) | `STARTUP_FOUNDER` |
+| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (Complex JSON) | `STARTUP_FOUNDER` |
 | `GET` | `/api/proposals/challenge/:challengeId` | Fetch proposals for dashboard (Financials locked) | `JURY_MEMBER`, `NODAL_OFFICER` |
 | `PATCH` | `/api/proposals/:id/evaluate` | Change proposal status (`SHORTLISTED` / `REJECTED`) | `JURY_MEMBER` |
+| `POST` | `/api/proposals/:id/agreement/generate`| Generate B2G Smart Escrow Agreement (Rich JSON) | `NODAL_OFFICER` |
+| `PATCH` | `/api/proposals/:id/agreement/sign` | Sign Agreement & Auto-Freeze Smart Escrow | `STARTUP_FOUNDER` |
 | `POST` | `/api/proposals/:id/sandbox-run` | Run Sandbox simulation on shortlisted proposal | `STARTUP_FOUNDER` |
 | `PATCH` | `/api/proposals/:id/award` | Finalize & Award the Grant | `NODAL_OFFICER` |
 
