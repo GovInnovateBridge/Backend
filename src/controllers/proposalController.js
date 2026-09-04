@@ -47,6 +47,21 @@ exports.submitProposal = async (req, res) => {
             vaultLocked: true // Always locked initially
         });
 
+        // 5. Mock ML Semantic Matchmaking: Assign to a random Jury member
+        const User = require('../models/User');
+        const allJuryMembers = await User.find({ role: 'JURY_MEMBER' });
+        
+        if (allJuryMembers.length > 0) {
+            console.log("🧠 [ML Matchmaking] Running Semantic Matchmaking to find best Jury (mock)...");
+            const matchedJury = allJuryMembers[Math.floor(Math.random() * allJuryMembers.length)];
+            newProposal.assignedJury = matchedJury._id;
+            newProposal.assignedAt = new Date();
+            newProposal.juryReviewStatus = 'PENDING_ACCEPTANCE';
+            console.log(`🧠 [ML Matchmaking] Proposal ${submissionRefNumber} assigned to Jury ${matchedJury.email}`);
+        } else {
+            console.warn("⚠️ No Jury members found for automatic assignment.");
+        }
+
         await newProposal.save();
 
         res.status(201).json({
@@ -350,6 +365,70 @@ exports.signAgreement = async (req, res) => {
         });
     } catch (error) {
         console.error("Error signing agreement:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/jury/accept
+// Jury accepts the proposal assignment
+exports.acceptJuryAssignment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const proposal = await Proposal.findById(id);
+
+        if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
+        
+        if (!proposal.assignedJury || proposal.assignedJury.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'This proposal is not assigned to you.' });
+        }
+
+        if (proposal.juryReviewStatus !== 'PENDING_ACCEPTANCE') {
+            return res.status(400).json({ message: 'Assignment is no longer pending.' });
+        }
+
+        proposal.juryReviewStatus = 'ACCEPTED';
+        await proposal.save();
+
+        res.status(200).json({ message: 'Assignment accepted successfully.', proposal });
+    } catch (error) {
+        console.error("Error accepting assignment:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/jury/decline
+// Jury declines the proposal, triggering immediate reassignment
+exports.declineJuryAssignment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const proposal = await Proposal.findById(id);
+        const User = require('../models/User');
+
+        if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
+        
+        if (!proposal.assignedJury || proposal.assignedJury.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'This proposal is not assigned to you.' });
+        }
+
+        console.log(`🔄 Jury ${req.user.email} declined proposal ${proposal.submissionRefNumber}. Reassigning immediately...`);
+        
+        const allJuryMembers = await User.find({ role: 'JURY_MEMBER' });
+        let newJury = allJuryMembers[Math.floor(Math.random() * allJuryMembers.length)];
+        
+        let attempts = 0;
+        while (newJury._id.toString() === req.user._id.toString() && attempts < 5) {
+            newJury = allJuryMembers[Math.floor(Math.random() * allJuryMembers.length)];
+            attempts++;
+        }
+
+        proposal.assignedJury = newJury._id;
+        proposal.assignedAt = new Date();
+        proposal.juryReviewStatus = 'PENDING_ACCEPTANCE'; // Send back to pending for the new jury
+        await proposal.save();
+
+        res.status(200).json({ message: 'Assignment declined and reassigned to another Jury.', newAssignedJury: newJury._id });
+    } catch (error) {
+        console.error("Error declining assignment:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };

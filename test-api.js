@@ -12,9 +12,12 @@ async function runTests() {
         await mongoose.connect(MONGO_URI);
         const User = require('./src/models/User');
         const Proposal = require('./src/models/Proposal');
+        const Challenge = require('./src/models/Challenge');
         
-        console.log("🧹 0. Wiping old proposals for clean test state...");
+        console.log("🧹 0. Wiping old data for clean test state...");
         await Proposal.deleteMany({});
+        await Challenge.deleteMany({});
+        await User.deleteMany({});
 
         const suffix = Date.now().toString().slice(-5);
         const nodalEmail = `nodal_${suffix}@gov.in`;
@@ -84,6 +87,10 @@ async function runTests() {
         console.log("✅ Security Passed: Financial data is hidden from Jury.\n");
 
         console.log("📝 6. Jury shortlisting proposal...");
+        // First accept the assignment
+        await axios.patch(`${BASE_URL}/proposals/${proposalId}/jury/accept`, {}, { headers: { Authorization: `Bearer ${juryToken}` } });
+        console.log("✅ Jury Accepted Proposal Assignment.");
+        
         await axios.patch(`${BASE_URL}/proposals/${proposalId}/evaluate`, { status: "SHORTLISTED" }, { headers: { Authorization: `Bearer ${juryToken}` } });
         console.log("✅ Proposal SHORTLISTED.\n");
 

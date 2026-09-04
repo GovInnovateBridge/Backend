@@ -49,6 +49,17 @@ const proposalSchema = new mongoose.Schema({
     agreementHash: { type: String }, // Stores dummy document hash
     agreementData: { type: mongoose.Schema.Types.Mixed }, // Detailed JSON Agreement
 
+    // =========================================================================
+    // JURY ASSIGNMENT
+    // =========================================================================
+    assignedJury: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedAt: { type: Date },
+    juryReviewStatus: {
+        type: String,
+        enum: ["PENDING_ACCEPTANCE", "ACCEPTED", "DECLINED", "REVIEW_COMPLETED"],
+        default: "PENDING_ACCEPTANCE"
+    },
+
     status: {
         type: String,
         enum: ["SUBMITTED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED"],

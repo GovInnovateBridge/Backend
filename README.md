@@ -4,13 +4,14 @@ Backend server for the **GovInnovateBridge** platform built with Node.js, Expres
 
 ---
 
-## 🚀 Features (Phase 1, 2, 3, 4, 4B & 5)
+## 🚀 Features (Phase 1 to 6)
 
 - **Modular Architecture**: Clean separation between server setup (`server.js`), Express configuration (`app.js`), controllers, routes, models, and middlewares.
 - **Role-Based Access Control (RBAC)**: Custom middlewares for authentication and fine-grained role authorization (`NODAL_OFFICER`, `STARTUP_FOUNDER`, `JURY_MEMBER`).
 - **Challenge Ingestion**: Government Nodal Officers can create and publish problem statements with auto-extracted KPIs.
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
 - **ML Adapter Layer**: Seamless integration with ML microservices (`/extract-kpis` and `/mask-pii`) with built-in zero-crash fallback mechanisms.
+- **Mock ML Matchmaking & Jury Auto-Reassignment (Phase 6)**: Proposals are automatically assigned to Jury members via semantic matchmaking. A background cron job automatically reassigns proposals to a new Jury member if left unaccepted.
 - **Jury Matchmaking Dashboard**: Fetch proposals securely sorted by ML scores. Vault Lock middleware automatically scrubs financial data to guarantee unbiased blind evaluation.
 - **Smart Escrow & Agreements (Phase 4B)**: Nodal Officers generate B2G Pilot Agreements. Startup signatures automatically freeze their Trial Budget into a simulated Smart Escrow.
 - **Sandbox & Grant Management**: Startups simulate ML sandbox validations (only possible if Escrow is FROZEN). Nodal officers automatically unlock financial envelopes during the Sandbox phase to award grants securely.
@@ -96,6 +97,8 @@ Middlewares defined in `src/middlewares/authMiddleware.js`:
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (Complex JSON) | `STARTUP_FOUNDER` |
+| `PATCH` | `/api/proposals/:id/jury/accept` | Accept an ML-matched proposal assignment | `JURY_MEMBER` |
+| `PATCH` | `/api/proposals/:id/jury/decline` | Decline assignment (Triggers instant auto-reassign) | `JURY_MEMBER` |
 | `GET` | `/api/proposals/challenge/:challengeId` | Fetch proposals for dashboard (Financials locked) | `JURY_MEMBER`, `NODAL_OFFICER` |
 | `PATCH` | `/api/proposals/:id/evaluate` | Change proposal status (`SHORTLISTED` / `REJECTED`) | `JURY_MEMBER` |
 | `POST` | `/api/proposals/:id/agreement/generate`| Generate B2G Smart Escrow Agreement (Rich JSON) | `NODAL_OFFICER` |
