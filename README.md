@@ -1,170 +1,150 @@
-# GovInnovateBridge - Backend API
+# 🏛️ GovInnovateBridge (Sahyog) - Backend API
 
-Backend server for the **GovInnovateBridge** platform built with Node.js, Express, and MongoDB.
+> **Empowering Startups, Eliminating Red Tape.**
+> Sahyog is a government startup funding platform designed to bring transparency, speed, and bureaucratic efficiency to B2G (Business-to-Government) interactions.
+
+Welcome to the backend repository of Sahyog! This scalable Node.js API powers our two-envelope proposal parsing, ML-driven matchmaking, and simulated Smart Escrow disbursements.
 
 ---
 
-## 🚀 Features (Phase 1 to 6)
+## 🌟 Overview & Vision
 
-- **Modular Architecture**: Clean separation between server setup (`server.js`), Express configuration (`app.js`), controllers, routes, models, and middlewares.
-- **Role-Based Access Control (RBAC)**: Custom middlewares for authentication and fine-grained role authorization (`NODAL_OFFICER`, `STARTUP_FOUNDER`, `JURY_MEMBER`).
-- **Challenge Ingestion**: Government Nodal Officers can create and publish problem statements with auto-extracted KPIs.
+Sahyog aims to bridge the gap between government bodies (Nodal Officers) and innovative Startups. Traditionally, government funding is slowed down by bureaucratic delays. Sahyog solves this by introducing **Smart Escrows** and **Automated Deemed-Approvals**. If a Nodal Officer fails to approve a valid milestone within 7 days, the system automatically steps in, approves it, and disburses the funds, protecting startups from unnecessary red tape.
+
+---
+
+## 🚀 Core Features
+
+Here is a breakdown of the core systems driving the platform (including the latest features implemented by our team):
+
+- **Secure JWT Authentication & Role-Based Access Control (RBAC)**: Fine-grained access for `STARTUP_FOUNDER`, `NODAL_OFFICER`, `JURY_MEMBER`, and `VIEWER`.
+- **Escrow State Machine**: A highly secure financial tracking system for milestone claims (`PENDING` ➔ `CLAIMED` ➔ `APPROVED` / `DEEMED_APPROVED` ➔ `RELEASED`).
+- **Automated 7-Day Deemed-Approval Watchdog**: A background cron job that automatically approves overdue milestones, ensuring startups get paid on time.
+- **Mock PFMS Gateway**: Simulates instant financial disbursements to the Public Financial Management System.
+- **Challenge Ingestion**: Government Nodal Officers can easily create and publish problem statements.
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
-- **ML Adapter Layer**: Seamless integration with ML microservices (`/extract-kpis` and `/mask-pii`) with built-in zero-crash fallback mechanisms.
-- **Mock ML Matchmaking & Jury Auto-Reassignment (Phase 6)**: Proposals are automatically assigned to Jury members via semantic matchmaking. A background cron job automatically reassigns proposals to a new Jury member if left unaccepted.
-- **Jury Matchmaking Dashboard**: Fetch proposals securely sorted by ML scores. Vault Lock middleware automatically scrubs financial data to guarantee unbiased blind evaluation.
-- **Smart Escrow & Agreements (Phase 4B)**: Nodal Officers generate B2G Pilot Agreements. Startup signatures automatically freeze their Trial Budget into a simulated Smart Escrow.
-- **Sandbox & Grant Management**: Startups simulate ML sandbox validations (only possible if Escrow is FROZEN). Nodal officers automatically unlock financial envelopes during the Sandbox phase to award grants securely.
-- **Rich JSON Payloads (Phase 5)**: Supports deep, highly complex GovTech-grade JSON structures for proposals and agreements (e.g., DPDP compliance, infrastructure dependencies, IP rights).
-- **Public Challenge Discovery APIs**: Paginated listing, detailed public challenge briefs with whitelisted fields, and lifecycle stage tracking.
+- **ML Matchmaking & Auto-Reassignment**: Automatically assigns proposals to Jury members. A background job reassigns them if left unaccepted.
 
 ---
 
-## 📁 Project Structure
+## 🔄 Architecture & Workflows
 
-```text
-Backend/
-├── .env.example            # Environment variables template
-├── package.json            # Project dependencies & scripts
-├── README.md               # Backend documentation
-└── src/
-    ├── app.js              # Express app initialization & route mounting
-    ├── server.js           # Server startup & Database connection logic
-    ├── config/             # Database & app configuration
-    ├── controllers/
-    │   ├── authController.js    # Authentication logic (Register, Login)
-    │   └── publicController.js  # Public Challenge APIs (Fetch, Detail, Status)
-    ├── middlewares/
-    │   └── authMiddleware.js    # RBAC Middlewares (verifyToken, verifyNodal, etc.)
-    ├── models/
-    │   ├── Challenge.js         # Mongoose schema for Challenges
-    │   └── User.js              # Mongoose schema for Users
-    ├── routes/
-    │   ├── authRoutes.js        # Auth routes (/api/auth)
-    │   └── publicRoutes.js      # Public routes (/api/challenges/public)
-    └── utils/                   # Helper functions & utilities
+### 1. 💰 Escrow State Machine Lifecycle
+
+Our Smart Escrow system ensures secure transfers of trial budgets based on milestone completions. 
+
+```mermaid
+stateDiagram-v2
+    direction TB
+    
+    [*] --> PENDING : Escrow Frozen
+    PENDING --> CLAIMED : Startup Claims Milestone
+    
+    CLAIMED --> APPROVED : Manual Approval
+    CLAIMED --> DEEMED_APPROVED : Auto-Approval (7 Days)
+    CLAIMED --> DISPUTED : Nodal Officer Rejects
+    
+    APPROVED --> RELEASED : PFMS Simulation Triggered
+    DEEMED_APPROVED --> RELEASED : PFMS Simulation Triggered
+    
+    RELEASED --> [*]
+    DISPUTED --> [*]
+```
+
+### 2. ⏳ Bureaucratic "Deemed-Approval" Automation
+
+To prevent startups from being blocked by delays, our automated watchdog steps in after a deadline passes.
+
+```mermaid
+sequenceDiagram
+    participant Cron as node-cron (Hourly)
+    participant DB as MongoDB
+    participant PFMS as Mock PFMS Gateway
+
+    Cron->>DB: Scan for "CLAIMED" milestones
+    
+    loop For each claim
+        alt If 7-Day Deadline has passed
+            Cron->>DB: Update state to DEEMED_APPROVED
+            Cron->>PFMS: Trigger processPFMSDisbursement()
+            PFMS-->>Cron: Return Transaction Ref
+            Cron->>DB: Update state to RELEASED & save Ref
+        end
+    end
 ```
 
 ---
 
-## 🔐 Authentication & Role-Based Access Control (RBAC)
+## 📡 API Reference
 
-Middlewares defined in `src/middlewares/authMiddleware.js`:
+Our API is organized and secured. Below are the key endpoints:
 
-| Middleware | Description | Access Level |
-| :--- | :--- | :--- |
-| `verifyToken` | Validates JWT token from `Authorization: Bearer <token>` header and attaches `req.user`. | Authenticated Users |
-| `verifyNodal` | Restricts access to Nodal Officers (`NODAL_OFFICER`). | Nodal Officers |
-| `verifyStartup` | Restricts access to Startups (`STARTUP_FOUNDER`). | Startup Founders |
-| `verifyJury` | Restricts access to Jury Members (`JURY_MEMBER`). | Jury Members |
-
----
-
-## 📡 API Endpoints
-
-### 1. Authentication Routes (`/api/auth`)
-
-| Method | Endpoint | Description | Auth Required |
+### 🔑 Authentication
+| Method | Endpoint | Required Role | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | Register a new user with a specific role | No |
-| `POST` | `/api/auth/login` | Authenticate user & return JWT token | No |
+| `POST` | `/api/auth/register` | *None* | Register a new user (`NODAL_OFFICER`, `STARTUP_FOUNDER`, etc.). |
+| `POST` | `/api/auth/login` | *None* | Authenticate and retrieve JWT token. |
+| `GET` | `/api/auth/me` | *Authenticated* | Retrieve the logged-in user's profile. |
 
----
-
-### 2. Public Challenge Routes (`/api/challenges/public`)
-
-| Method | Endpoint | Query / URL Params | Description | Auth Required |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/challenges/public` | `?page=1&limit=10` | Fetch paginated list of published challenges | No |
-| `GET` | `/api/challenges/public/:challengeId` | `:challengeId` | Fetch public brief of a published challenge | No |
-| `GET` | `/api/challenges/public/:challengeId/status` | `:challengeId` | Fetch the current lifecycle status of a challenge | No |
-
----
-
-### 3. Challenge Ingestion & Management Routes (`/api/challenges`)
-
-| Method | Endpoint | Description | Auth Required |
+### 💳 Escrows & Financials
+| Method | Endpoint | Required Role | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/challenges/create` | Create a new DRAFT challenge (auto-extracts KPIs) | `NODAL_OFFICER` |
-| `PATCH` | `/api/challenges/:id/publish` | Publish a drafted challenge | `NODAL_OFFICER` |
-| `PATCH` | `/api/challenges/:id/evaluate` | Start evaluation phase (close submissions) | `NODAL_OFFICER` |
-| `PATCH` | `/api/challenges/:id/sandbox` | Activate sandbox phase (unlocks Envelope B) | `NODAL_OFFICER` |
+| `GET` | `/api/escrow/` | *Authenticated*| Fetch active escrows and milestone states. |
+| `POST` | `/api/escrow/claim-milestone` | `STARTUP_FOUNDER` | Submit a claim for a completed milestone. |
+| `POST` | `/api/escrow/approve` | `NODAL_OFFICER` | Manually approve a claimed milestone. |
 
----
-
-### 4. Proposal & Evaluation Routes (`/api/proposals`)
-
-| Method | Endpoint | Description | Auth Required |
+### 🏦 Mock PFMS Gateway
+| Method | Endpoint | Required Role | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/proposals/submit` | Submit a Two-Envelope proposal (Complex JSON) | `STARTUP_FOUNDER` |
-| `PATCH` | `/api/proposals/:id/jury/accept` | Accept an ML-matched proposal assignment | `JURY_MEMBER` |
-| `PATCH` | `/api/proposals/:id/jury/decline` | Decline assignment (Triggers instant auto-reassign) | `JURY_MEMBER` |
-| `GET` | `/api/proposals/challenge/:challengeId` | Fetch proposals for dashboard (Financials locked) | `JURY_MEMBER`, `NODAL_OFFICER` |
-| `PATCH` | `/api/proposals/:id/evaluate` | Change proposal status (`SHORTLISTED` / `REJECTED`) | `JURY_MEMBER` |
-| `POST` | `/api/proposals/:id/agreement/generate`| Generate B2G Smart Escrow Agreement (Rich JSON) | `NODAL_OFFICER` |
-| `PATCH` | `/api/proposals/:id/agreement/sign` | Sign Agreement & Auto-Freeze Smart Escrow | `STARTUP_FOUNDER` |
-| `POST` | `/api/proposals/:id/sandbox-run` | Run Sandbox simulation on shortlisted proposal | `STARTUP_FOUNDER` |
-| `PATCH` | `/api/proposals/:id/award` | Finalize & Award the Grant | `NODAL_OFFICER` |
+| `POST` | `/api/mock/pfms/disburse` | *Internal / Test* | Directly test the Mock PFMS disbursement logic. |
 
-#### Example Response (`GET /api/challenges/public`):
-```json
-{
-  "challenges": [
-    {
-      "_id": "66d81234abcd5678ef901234",
-      "title": "Smart Traffic Optimization",
-      "problemStatementRaw": "Detailed problem statement text...",
-      "publishedAt": "2026-09-01T10:00:00.000Z",
-      "evaluationDeadline": "2026-10-01T23:59:59.000Z"
-    }
-  ],
-  "currentPage": 1,
-  "totalPages": 1,
-  "total": 1
-}
-```
+### 📝 Proposals & Grants
+| Method | Endpoint | Required Role | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/proposals/submit` | `STARTUP_FOUNDER` | Submit a Two-Envelope proposal. |
+| `GET` | `/api/proposals/challenge/:id`| `JURY_MEMBER` / `NODAL` | Fetch proposals (Envelope B locked for Jury). |
+| `PATCH` | `/api/proposals/:id/evaluate` | `JURY_MEMBER` | Shortlist or reject a proposal. |
+| `POST` | `/api/proposals/:id/agreement/generate`| `NODAL_OFFICER` | Generate B2G Smart Escrow Agreement. |
+
+### 🎯 Challenges & Discovery
+| Method | Endpoint | Required Role | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/challenges/public` | *None* | Paginated listing of published challenges. |
+| `POST` | `/api/challenges/create` | `NODAL_OFFICER` | Create a new challenge (auto-extracts KPIs). |
 
 ---
 
-## 🛠️ Setup & Local Development
+## 🛠️ Getting Started / Setup Instructions
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v16+ recommended)
-- [MongoDB](https://www.mongodb.com/) (Local instance or MongoDB Atlas)
+Follow these quick steps to get the backend running locally:
 
-### Environment Variables
-Create a `.env` file in the root directory:
-```env
-PORT=5000
-MONGO_URI=mongodb://localhost:27017/govinnovatebridge
-JWT_SECRET=your_jwt_secret_key_here
-```
+### 1. Prerequisites
+- **Node.js** (v16+ recommended)
+- **MongoDB** (Local instance or MongoDB Atlas)
 
-### Installation
+### 2. Installation
+Clone the repository and install the required dependencies:
 ```bash
-# Install dependencies
 npm install
 ```
 
-### Running the Server
-```bash
-# Run in development mode (with nodemon)
-npm run dev
-
-# Run in production mode
-npm start
+### 3. Environment Variables
+Create a `.env` file in the root backend directory:
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/govinnovatebridge
+JWT_SECRET=your_super_secret_jwt_key
 ```
 
----
-
-## 🧪 Testing the APIs
-
-You can test the APIs using `curl`, Postman, or PowerShell:
-
+### 4. Running the Server
+Start the development server with hot-reloading:
 ```bash
-# Test server health / public challenge listing
-curl -X GET http://localhost:5000/api/challenges/public
+npm run dev
+```
+> The server will connect to MongoDB, boot up the background cron jobs, and expose the API on port `5000`.
 
-# Test challenge status by ID
-curl -X GET http://localhost:5000/api/challenges/public/66d81234abcd5678ef901234/status
+### 5. Testing via Postman / cURL
+You can easily test if the server is running by hitting the public challenge API:
+```bash
+curl -X GET http://localhost:5000/api/challenges/public
 ```
