@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
+const Escrow = require('../models/Escrow');
 const { maskPII } = require('../services/mlClient');
 
 // At the top, import the new TRL integration services and upload middleware
@@ -183,13 +184,15 @@ exports.getProposalsForChallenge = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/evaluate
-// Jury evaluates a proposal (Score out of 70)
+// Jury evaluates a proposal (Score out of 70) and sets Milestone Timeline
 exports.evaluateProposal = async (req, res) => {
     try {
         const { id } = req.params;
-        const { innovation, feasibility, scalability } = req.body; 
+        const { innovation, feasibility, scalability, m1Days, m2Days, m3Days } = req.body; 
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!m1Days || !m2Days || !m3Days) {
+            return res.status(400).json({ message: 'Jury must specify the timeline (days) for M1, M2, and M3.' });
+        }        if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'Invalid proposal ID' });
         }
 
@@ -229,6 +232,13 @@ exports.evaluateProposal = async (req, res) => {
             totalScore,
             hash,
             evaluatedAt: new Date()
+        };
+
+        // Save the Jury's recommended timeline for the 3 milestones
+        proposal.juryTimeline = {
+            m1Days: Number(m1Days),
+            m2Days: Number(m2Days),
+            m3Days: Number(m3Days)
         };
 
         proposal.status = 'JURY_EVALUATED';
@@ -446,8 +456,24 @@ exports.signAgreement = async (req, res) => {
 
         proposal.agreementStatus = 'SIGNED';
         proposal.escrowStatus = 'FROZEN';
-        
         await proposal.save();
+
+        // Initialize 15-35-50 Escrow
+        const totalBudget = proposal.envelope_b_financial?.pilot_execution_bid?.amount_inr || 1000000;
+        
+        const m1Amount = totalBudget * 0.15;
+        const m2Amount = totalBudget * 0.35;
+        const m3Amount = totalBudget * 0.50;
+
+        await Escrow.create({
+            proposal: proposal._id,
+            challenge: proposal.challenge,
+            milestones: [
+                { code: "M1", amount: m1Amount },
+                { code: "M2", amount: m2Amount },
+                { code: "M3", amount: m3Amount }
+            ]
+        });
 
         res.status(200).json({
             message: 'Agreement signed successfully! Trial budget is now FROZEN in smart escrow.',

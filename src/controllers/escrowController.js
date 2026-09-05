@@ -1,4 +1,5 @@
 const Escrow = require('../models/Escrow');
+const Proposal = require('../models/Proposal');
 const mockGateway = require('./mockGatewayController');
 
 exports.claimMilestone = async (req, res) => {
@@ -17,7 +18,7 @@ exports.claimMilestone = async (req, res) => {
         milestone.claimedAt = new Date();
         
         const deadline = new Date();
-        deadline.setDate(deadline.getDate() + 7); 
+        deadline.setDate(deadline.getDate() + 3); // 3-day Auto-Approval limit
         milestone.deemedApprovalDeadline = deadline;
 
         await escrow.save();
@@ -74,6 +75,54 @@ exports.approveMilestone = async (req, res) => {
             milestoneCode: milestone.code,
             status: milestone.status,
             pfmsTransactionRef: milestone.pfmsTransactionRef
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// PATCH /api/escrow/reject
+// Nodal Officer rejects/partially pays a milestone and Evicts the Startup
+exports.rejectMilestone = async (req, res) => {
+    try {
+        const { escrowId, milestoneCode, partialAmount } = req.body;
+        
+        const escrow = await Escrow.findById(escrowId);
+        if (!escrow) return res.status(404).json({ message: "Escrow not found" });
+
+        const milestone = escrow.milestones.find(m => m.code === milestoneCode);
+        if (!milestone) return res.status(404).json({ message: "Milestone not found" });
+
+        // Ensure partial amount is <= 50% of the milestone
+        const maxAllowed = milestone.amount * 0.5;
+        const finalPayout = Math.min(Number(partialAmount) || 0, maxAllowed);
+
+        milestone.status = "DISPUTED";
+        milestone.approvedAt = new Date(); // Marked as resolved but disputed
+
+        // Mock PFMS for the partial amount if any
+        if (finalPayout > 0) {
+            const mockReq = { body: { escrowId, milestoneCode, amount: finalPayout, beneficiaryAccount: "MOCK-ACC-123" } };
+            let pfmsData = {};
+            const mockRes = { status: () => mockRes, json: (data) => { pfmsData = data; return data; } };
+            mockGateway.disbursePFMS(mockReq, mockRes);
+            milestone.pfmsTransactionRef = pfmsData.transactionRef;
+            milestone.status = "RELEASED"; // It was released partially
+        }
+
+        milestone.releasedAt = new Date();
+        await escrow.save();
+
+        // Mark Proposal as Evicted
+        const proposal = await Proposal.findById(escrow.proposal);
+        if (proposal) {
+            proposal.status = "EVICTED_FROM_SANDBOX";
+            await proposal.save();
+        }
+
+        return res.status(200).json({
+            message: `Startup evicted. Paid ${finalPayout} (Max 50%).`,
+            status: milestone.status
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
