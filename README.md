@@ -24,6 +24,11 @@ Here is a breakdown of the core systems driving the platform (including the late
 - **Challenge Ingestion**: Government Nodal Officers can easily create and publish problem statements.
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
 - **ML Matchmaking & Auto-Reassignment**: Automatically assigns proposals to Jury members. A background job reassigns them if left unaccepted.
+- **Two-Stage Weighted Evaluation (Phase 7)**: 
+  - **Jury**: Scores out of 70 on Technical Criteria (Innovation, Feasibility, Scalability).
+  - **Nodal Officer**: Scores out of 30 on Financial/Administrative Criteria (Budget, Timeline).
+  - Backend automatically calculates the `(Jury/70 * 60) + (Officer/30 * 40)` formula and generates **Immutable Cryptographic Scorecards**.
+- **Automated Top-3 Shortlisting**: Nodal Officers can fetch the top 3 highest-scoring proposals instantly.
 
 ---
 
@@ -102,8 +107,11 @@ Our API is organized and secured. Below are the key endpoints:
 | Method | Endpoint | Required Role | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/proposals/submit` | `STARTUP_FOUNDER` | Submit a Two-Envelope proposal. |
+| `PATCH` | `/api/proposals/:id/jury/accept` | `JURY_MEMBER` | Accept an ML-matched proposal assignment. |
+| `PATCH` | `/api/proposals/:id/jury/decline` | `JURY_MEMBER` | Decline assignment (Triggers instant auto-reassign). |
 | `GET` | `/api/proposals/challenge/:id`| `JURY_MEMBER` / `NODAL` | Fetch proposals (Envelope B locked for Jury). |
-| `PATCH` | `/api/proposals/:id/evaluate` | `JURY_MEMBER` | Shortlist or reject a proposal. |
+| `PATCH` | `/api/proposals/:id/evaluate` | `JURY_MEMBER` | Score proposal out of 70 (Generates Hash). |
+| `PATCH` | `/api/proposals/:id/officer/evaluate` | `NODAL_OFFICER` | Score proposal out of 30 & calc final weight. |
 | `POST` | `/api/proposals/:id/agreement/generate`| `NODAL_OFFICER` | Generate B2G Smart Escrow Agreement. |
 
 ### 🎯 Challenges & Discovery
@@ -111,6 +119,7 @@ Our API is organized and secured. Below are the key endpoints:
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/challenges/public` | *None* | Paginated listing of published challenges. |
 | `POST` | `/api/challenges/create` | `NODAL_OFFICER` | Create a new challenge (auto-extracts KPIs). |
+| `PATCH` | `/api/challenges/:id/shortlist-top-3` | `NODAL_OFFICER` | Shortlist Top 3 evaluated proposals automatically. |
 
 ---
 

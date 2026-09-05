@@ -2,10 +2,10 @@ const cron = require('node-cron');
 const Proposal = require('../models/Proposal');
 const User = require('../models/User');
 
-// Demo configuration: Runs every 1 minute
-const CRON_SCHEDULE = '* * * * *'; 
-// Demo configuration: Expiry is 1 minute (instead of 3 days)
-const EXPIRY_MS = 1 * 60 * 1000;
+// Demo configuration: Runs every 20 seconds
+const CRON_SCHEDULE = '*/20 * * * * *'; 
+// Demo configuration: Expiry is 20 seconds (instead of 3 days)
+const EXPIRY_MS = 20 * 1000;
 
 const startJuryReassignmentCron = () => {
     console.log(`⏱️  Starting Jury Reassignment Cron Job. Running on schedule: ${CRON_SCHEDULE}`);
