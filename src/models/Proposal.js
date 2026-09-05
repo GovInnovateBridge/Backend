@@ -23,6 +23,13 @@ const proposalSchema = new mongoose.Schema({
     vaultLocked: { type: Boolean, default: true },
 
     // =========================================================================
+    // ZERO-TRUST TRL ENGINE VERIFICATION METRICS
+    // =========================================================================
+    verified_trl_score: { type: Number, default: 0 },
+    technical_confidence: { type: Number, default: 0 },
+    is_fraud_flagged: { type: Boolean, default: false },
+
+    // =========================================================================
     // SANDBOX TESTING & BENCHMARK METRICS
     // =========================================================================
     sandboxMetrics: {

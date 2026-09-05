@@ -3,11 +3,15 @@ const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
 const { maskPII, runSandboxSimulation } = require('../utils/mlAdapter');
 
+// At the top, import the new TRL integration services and upload middleware
+const upload = require('../middlewares/uploadMiddleware');
+const trlIntegrationService = require('../utils/trlIntegrationService');
+
 // POST /api/proposals/submit
-// Startup submits a two-envelope proposal
+// Startup submits a two-envelope proposal with Zero-Trust TRL Validation
 exports.submitProposal = async (req, res) => {
     try {
-        const { challengeId, proposal_metadata, pre_requisite_clearance, assigned_evaluator_pool, internal_db_meta, envelope_a_technical, envelope_b_financial } = req.body;
+        const { challengeId, proposal_metadata, pre_requisite_clearance, assigned_evaluator_pool, internal_db_meta, envelope_a_technical, envelope_b_financial, hardware_otp } = req.body;
 
         // 1. Validation Checks
         if (!mongoose.Types.ObjectId.isValid(challengeId)) {
@@ -30,6 +34,47 @@ exports.submitProposal = async (req, res) => {
             return res.status(400).json({ message: 'You have already submitted a proposal for this challenge.' });
         }
 
+        // --- NEW ML INTEGRATION LOGIC STARTS HERE ---
+        let verifiedTrlData = { verified_trl: 0, technical_confidence: 0, is_fraud: false };
+        
+        const isHardwareStartup = envelope_a_technical?.domain === 'HARDWARE';
+        const claimedTrl = envelope_a_technical?.claimed_trl || 1;
+
+        if (isHardwareStartup && req.file) {
+            // Check Hardware TRL
+            const isVideo = req.file.mimetype.includes('video');
+            const mlResponse = await trlIntegrationService.verifyHardwareTRL(
+                req.file.buffer, 
+                req.file.originalname, 
+                hardware_otp, // Passed from frontend for videos
+                isVideo
+            );
+            
+            if (!mlResponse.verified) {
+                return res.status(400).json({ message: "Hardware Verification Failed: Invalid CAD or Missing OTP in video."});
+            }
+            verifiedTrlData.technical_confidence = mlResponse.confidence || 1.0;
+            verifiedTrlData.verified_trl = claimedTrl; // If passed, they retain their claimed TRL
+            
+        } else {
+            // Check Software TRL
+            const pitchData = envelope_a_technical?.startup_pitch || "No pitch provided";
+            const backendProofs = {
+                github_verified: !!envelope_a_technical?.github_url, // Add your own backend logic here
+                live_url_verified: !!envelope_a_technical?.live_url
+            };
+            
+            const mlResponse = await trlIntegrationService.evaluateSoftwareTRL(pitchData, claimedTrl, backendProofs);
+            verifiedTrlData.verified_trl = mlResponse.final_verified_trl;
+            verifiedTrlData.technical_confidence = mlResponse.technical_confidence;
+            verifiedTrlData.is_fraud = mlResponse.is_fraud_detected;
+            
+            if (verifiedTrlData.is_fraud) {
+                console.warn(`FRAUD DETECTED: Downgrading TRL from ${claimedTrl} to ${verifiedTrlData.verified_trl}`);
+            }
+        }
+        // --- NEW ML INTEGRATION LOGIC ENDS HERE ---
+
         // Generate Submission Ref
         const submissionRefNumber = proposal_metadata?.proposal_id || `PROP-${new Date().getFullYear()}-${Math.floor(Math.random() * 100000)}`;
 
@@ -44,7 +89,11 @@ exports.submitProposal = async (req, res) => {
             internal_db_meta,
             envelope_a_technical,
             envelope_b_financial,
-            vaultLocked: true // Always locked initially
+            vaultLocked: true, // Always locked initially
+            // ADD THE VERIFIED DATA TO THE DB:
+            verified_trl_score: verifiedTrlData.verified_trl,
+            technical_confidence: verifiedTrlData.technical_confidence,
+            is_fraud_flagged: verifiedTrlData.is_fraud
         });
 
         // 5. Mock ML Semantic Matchmaking: Assign to a random Jury member
@@ -67,7 +116,8 @@ exports.submitProposal = async (req, res) => {
         res.status(201).json({
             message: 'Two-envelope proposal submitted successfully!',
             proposalRef: submissionRefNumber,
-            proposalId: newProposal._id
+            proposalId: newProposal._id,
+            verifiedTrl: verifiedTrlData
         });
 
     } catch (error) {
@@ -146,10 +196,6 @@ exports.evaluateProposal = async (req, res) => {
         }
 
         proposal.status = status;
-        
-        // MVP: We could store comments in a new array or field, but for now we just change status.
-        // If we want to save comments, we should add it to the Proposal schema, or log it.
-        // We will just update status for this phase.
 
         await proposal.save();
 
@@ -279,7 +325,6 @@ exports.generateAgreement = async (req, res) => {
         proposal.agreementStatus = 'PENDING_SIGNATURE';
         proposal.agreementHash = 'HASH_' + require('crypto').randomBytes(16).toString('hex').toUpperCase();
         
-        // Mocking the detailed JSON Agreement payload based on the PDF format
         proposal.agreementData = {
             agreement_metadata: {
                 agreement_id: `SAHYOG/BGSE/${new Date().getFullYear()}/DEL/00147`,
@@ -350,10 +395,7 @@ exports.signAgreement = async (req, res) => {
             return res.status(400).json({ message: 'No pending agreement found to sign.' });
         }
 
-        // Sign agreement
         proposal.agreementStatus = 'SIGNED';
-        
-        // Auto-freeze escrow upon signing
         proposal.escrowStatus = 'FROZEN';
         
         await proposal.save();
@@ -423,7 +465,7 @@ exports.declineJuryAssignment = async (req, res) => {
 
         proposal.assignedJury = newJury._id;
         proposal.assignedAt = new Date();
-        proposal.juryReviewStatus = 'PENDING_ACCEPTANCE'; // Send back to pending for the new jury
+        proposal.juryReviewStatus = 'PENDING_ACCEPTANCE';
         await proposal.save();
 
         res.status(200).json({ message: 'Assignment declined and reassigned to another Jury.', newAssignedJury: newJury._id });
