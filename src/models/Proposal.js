@@ -60,9 +60,33 @@ const proposalSchema = new mongoose.Schema({
         default: "PENDING_ACCEPTANCE"
     },
 
+    // =========================================================================
+    // TWO-STAGE WEIGHTED EVALUATION
+    // =========================================================================
+    juryScoreCard: {
+        criteria: {
+            innovation: { type: Number, max: 30 },
+            feasibility: { type: Number, max: 20 },
+            scalability: { type: Number, max: 20 }
+        },
+        totalScore: { type: Number, max: 70 }, // Out of 70
+        hash: { type: String }, // Immutable SHA-256
+        evaluatedAt: { type: Date }
+    },
+    officerScoreCard: {
+        criteria: {
+            budgetViability: { type: Number, max: 15 },
+            implementationTimeline: { type: Number, max: 15 }
+        },
+        totalScore: { type: Number, max: 30 }, // Out of 30
+        hash: { type: String }, // Immutable SHA-256
+        evaluatedAt: { type: Date }
+    },
+    finalWeightedScore: { type: Number }, // (Jury/70 * 60) + (Officer/30 * 40)
+
     status: {
         type: String,
-        enum: ["SUBMITTED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED"],
+        enum: ["SUBMITTED", "JURY_EVALUATED", "OFFICER_EVALUATED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED"],
         default: "SUBMITTED"
     }
 }, { timestamps: true });

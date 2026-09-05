@@ -121,18 +121,14 @@ exports.getProposalsForChallenge = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/evaluate
-// Jury evaluates a proposal (SHORTLISTED or REJECTED)
+// Jury evaluates a proposal (Score out of 70)
 exports.evaluateProposal = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, comments } = req.body; // e.g. status: "SHORTLISTED", comments: "Good approach"
+        const { innovation, feasibility, scalability } = req.body; 
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'Invalid proposal ID' });
-        }
-
-        if (!["SHORTLISTED", "REJECTED"].includes(status)) {
-            return res.status(400).json({ message: 'Invalid status. Must be SHORTLISTED or REJECTED.' });
         }
 
         const proposal = await Proposal.findById(id);
@@ -140,26 +136,115 @@ exports.evaluateProposal = async (req, res) => {
             return res.status(404).json({ message: 'Proposal not found' });
         }
 
+        // Validate Jury assignment
+        if (!proposal.assignedJury || proposal.assignedJury.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You are not assigned to evaluate this proposal.' });
+        }
+
+        if (proposal.juryReviewStatus !== 'ACCEPTED') {
+            return res.status(400).json({ message: 'You must ACCEPT the assignment before evaluating.' });
+        }
+
         const challenge = await Challenge.findById(proposal.challenge);
         if (challenge.status !== 'EVALUATING') {
             return res.status(400).json({ message: 'Challenge is not in the EVALUATING phase.' });
         }
 
-        proposal.status = status;
+        // Score Calculation
+        const score_innovation = Math.min(Math.max(Number(innovation) || 0, 0), 30);
+        const score_feasibility = Math.min(Math.max(Number(feasibility) || 0, 0), 20);
+        const score_scalability = Math.min(Math.max(Number(scalability) || 0, 0), 20);
         
-        // MVP: We could store comments in a new array or field, but for now we just change status.
-        // If we want to save comments, we should add it to the Proposal schema, or log it.
-        // We will just update status for this phase.
+        const totalScore = score_innovation + score_feasibility + score_scalability;
 
+        // Generate Immutable Hash for Scorecard
+        const crypto = require('crypto');
+        const hashPayload = `${id}-${req.user._id}-${totalScore}-${Date.now()}`;
+        const hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
+
+        proposal.juryScoreCard = {
+            criteria: { innovation: score_innovation, feasibility: score_feasibility, scalability: score_scalability },
+            totalScore,
+            hash,
+            evaluatedAt: new Date()
+        };
+
+        proposal.status = 'JURY_EVALUATED';
+        proposal.juryReviewStatus = 'REVIEW_COMPLETED';
         await proposal.save();
 
         res.status(200).json({
-            message: `Proposal successfully ${status.toLowerCase()}`,
-            proposal
+            message: `Jury evaluation complete. Score: ${totalScore}/70`,
+            scoreCard: proposal.juryScoreCard
         });
 
     } catch (error) {
-        console.error("Error evaluating proposal:", error);
+        console.error("Error in Jury evaluation:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// PATCH /api/proposals/:id/officer/evaluate
+// Nodal Officer evaluates a proposal (Score out of 30) and calculates final weighted score
+exports.officerEvaluateProposal = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { budgetViability, implementationTimeline } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid proposal ID' });
+        }
+
+        const proposal = await Proposal.findById(id);
+        if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
+
+        if (proposal.status !== 'JURY_EVALUATED') {
+            return res.status(400).json({ message: 'Proposal must be evaluated by the Jury first (status: JURY_EVALUATED).' });
+        }
+
+        const challenge = await Challenge.findById(proposal.challenge);
+        if (challenge.createdBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Forbidden: You can only evaluate proposals for your own challenge.' });
+        }
+
+        // Score Calculation
+        const score_budget = Math.min(Math.max(Number(budgetViability) || 0, 0), 15);
+        const score_timeline = Math.min(Math.max(Number(implementationTimeline) || 0, 0), 15);
+        
+        const totalScore = score_budget + score_timeline;
+
+        // Generate Immutable Hash for Scorecard
+        const crypto = require('crypto');
+        const hashPayload = `${id}-OFFICER-${totalScore}-${Date.now()}`;
+        const hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
+
+        proposal.officerScoreCard = {
+            criteria: { budgetViability: score_budget, implementationTimeline: score_timeline },
+            totalScore,
+            hash,
+            evaluatedAt: new Date()
+        };
+
+        // Calculate Final Weighted Score
+        // Jury: out of 70 (60% weight) -> (JuryScore / 70) * 60
+        // Officer: out of 30 (40% weight) -> (OfficerScore / 30) * 40
+        const juryScore = proposal.juryScoreCard.totalScore;
+        const weightedJury = (juryScore / 70) * 60;
+        const weightedOfficer = (totalScore / 30) * 40;
+        
+        proposal.finalWeightedScore = weightedJury + weightedOfficer;
+        proposal.status = 'OFFICER_EVALUATED';
+        
+        await proposal.save();
+
+        res.status(200).json({
+            message: `Officer evaluation complete. Total Weighted Score: ${proposal.finalWeightedScore.toFixed(2)}/100`,
+            finalWeightedScore: proposal.finalWeightedScore,
+            officerScoreCard: proposal.officerScoreCard
+        });
+
+    } catch (error) {
+        console.error("Error in Officer evaluation:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };

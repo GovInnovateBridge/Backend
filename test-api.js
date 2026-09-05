@@ -13,10 +13,14 @@ async function runTests() {
         const User = require('./src/models/User');
         const Proposal = require('./src/models/Proposal');
         const Challenge = require('./src/models/Challenge');
+        const GovernmentProfile = require('./src/models/GovernmentProfile');
+        const StartupProfile = require('./src/models/StartupProfile');
         
         console.log("🧹 0. Wiping old data for clean test state...");
         await Proposal.deleteMany({});
         await Challenge.deleteMany({});
+        await GovernmentProfile.deleteMany({});
+        await StartupProfile.deleteMany({});
         await User.deleteMany({});
 
         const suffix = Date.now().toString().slice(-5);
@@ -26,9 +30,9 @@ async function runTests() {
 
         // --- AUTHENTICATION ---
         console.log("📝 1. Registering Users (Nodal, Startup, Jury)...");
-        await axios.post(`${BASE_URL}/auth/register`, { name: "Govt Nodal", email: nodalEmail, password: "password123", role: "NODAL_OFFICER" });
-        await axios.post(`${BASE_URL}/auth/register`, { name: "Startup CEO", email: startupEmail, password: "password123", role: "STARTUP_FOUNDER" });
-        await axios.post(`${BASE_URL}/auth/register`, { name: "Jury Expert", email: juryEmail, password: "password123", role: "JURY_MEMBER" });
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Govt Nodal", email: nodalEmail, password: "password123", role: "NODAL_OFFICER", organization: "Dept of Traffic" });
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Startup CEO", email: startupEmail, password: "password123", role: "STARTUP_FOUNDER", organization: "AI Startup", dpiitNumber: "DPIIT123456" });
+        await axios.post(`${BASE_URL}/auth/register`, { name: "Jury Expert", email: juryEmail, password: "password123", role: "JURY_MEMBER", organization: "IIT Delhi" });
 
         // Auto verify
         await User.updateMany({ email: { $in: [nodalEmail, startupEmail, juryEmail] } }, { isVerified: true });
@@ -86,13 +90,25 @@ async function runTests() {
         }
         console.log("✅ Security Passed: Financial data is hidden from Jury.\n");
 
-        console.log("📝 6. Jury shortlisting proposal...");
+        console.log("📝 6. Jury Evaluating proposal...");
         // First accept the assignment
         await axios.patch(`${BASE_URL}/proposals/${proposalId}/jury/accept`, {}, { headers: { Authorization: `Bearer ${juryToken}` } });
         console.log("✅ Jury Accepted Proposal Assignment.");
         
-        await axios.patch(`${BASE_URL}/proposals/${proposalId}/evaluate`, { status: "SHORTLISTED" }, { headers: { Authorization: `Bearer ${juryToken}` } });
-        console.log("✅ Proposal SHORTLISTED.\n");
+        const juryEvalRes = await axios.patch(`${BASE_URL}/proposals/${proposalId}/evaluate`, { 
+            innovation: 25, feasibility: 18, scalability: 15 
+        }, { headers: { Authorization: `Bearer ${juryToken}` } });
+        console.log(`✅ Jury Evaluated. Score: ${juryEvalRes.data.scoreCard.totalScore}/70`);
+
+        console.log("📝 6a. Nodal Officer Evaluating proposal...");
+        const officerEvalRes = await axios.patch(`${BASE_URL}/proposals/${proposalId}/officer/evaluate`, {
+            budgetViability: 12, implementationTimeline: 14
+        }, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log(`✅ Officer Evaluated. Weighted Final Score: ${officerEvalRes.data.finalWeightedScore.toFixed(2)}/100`);
+
+        console.log("📝 6b. Nodal Officer Shortlisting Top 3...");
+        const shortlistRes = await axios.patch(`${BASE_URL}/challenges/${challengeId}/shortlist-top-3`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log(`✅ Shortlisted top ${shortlistRes.data.shortlisted.length} proposals!\n`);
 
         // --- PHASE 4B: AGREEMENT & ESCROW ---
         console.log("📝 6b. Nodal Officer generating Agreement...");

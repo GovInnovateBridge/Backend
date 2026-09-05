@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createChallenge, publishChallenge, startEvaluation, startSandbox } = require('../controllers/challengeController');
+const { createChallenge, publishChallenge, startEvaluation, startSandbox, shortlistTop3 } = require('../controllers/challengeController');
 const { verifyToken, verifyNodal } = require('../middlewares/authMiddleware');
 
 // POST /api/challenges/create
@@ -18,5 +18,9 @@ router.patch('/:id/evaluate', verifyToken, verifyNodal, startEvaluation);
 // PATCH /api/challenges/:id/sandbox
 // Nodal Officer only (activates sandbox phase)
 router.patch('/:id/sandbox', verifyToken, verifyNodal, startSandbox);
+
+// PATCH /api/challenges/:id/shortlist-top-3
+// Nodal Officer only
+router.patch('/:id/shortlist-top-3', verifyToken, verifyNodal, shortlistTop3);
 
 module.exports = router;
