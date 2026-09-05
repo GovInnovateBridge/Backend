@@ -124,9 +124,17 @@ async function runTests() {
         await axios.patch(`${BASE_URL}/challenges/${challengeId}/sandbox`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
         console.log("✅ Sandbox phase active.\n");
 
-        console.log("📝 8. Startup running Sandbox Simulation...");
-        const sandboxRes = await axios.post(`${BASE_URL}/proposals/${proposalId}/sandbox-run`, {}, { headers: { Authorization: `Bearer ${startupToken}` } });
-        console.log("✅ Sandbox Run Complete. Metrics: ", sandboxRes.data.metrics);
+        console.log("📝 8. Startup triggering Async Sandbox Test...");
+        const sandboxRes = await axios.post(`${BASE_URL}/proposals/${proposalId}/run-sandbox`, {
+            endpointUrl: "https://jsonplaceholder.typicode.com/posts/1"
+        }, { headers: { Authorization: `Bearer ${startupToken}` } });
+        console.log(`✅ Sandbox job queued! JobID: ${sandboxRes.data.jobId}`);
+
+        console.log("⏳ Waiting 3 seconds for async worker to finish...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const statusRes = await axios.get(`${BASE_URL}/proposals/${proposalId}/sandbox-status`, { headers: { Authorization: `Bearer ${nodalToken}` } });
+        console.log("✅ Sandbox Run Complete. Metrics: ", statusRes.data);
         console.log("\n");
 
         console.log("📝 9. Nodal Officer awarding Grant...");

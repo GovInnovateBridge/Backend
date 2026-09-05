@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { submitProposal, getProposalsForChallenge, evaluateProposal, officerEvaluateProposal, runSandboxTest, awardGrant, generateAgreement, signAgreement, acceptJuryAssignment, declineJuryAssignment } = require('../controllers/proposalController');
+const { submitProposal, getProposalsForChallenge, evaluateProposal, officerEvaluateProposal, awardGrant, generateAgreement, signAgreement, acceptJuryAssignment, declineJuryAssignment } = require('../controllers/proposalController');
+const { runSandbox, getSandboxStatus } = require('../controllers/sandboxController');
 const { verifyToken, verifyStartup, verifyJury, verifyNodal } = require('../middlewares/authMiddleware');
 const lockEnvelopeB = require('../middlewares/lockEnvelopeBMiddleware');
 
@@ -20,9 +21,13 @@ router.patch('/:id/evaluate', verifyToken, verifyJury, evaluateProposal);
 // Nodal Officer only
 router.patch('/:id/officer/evaluate', verifyToken, verifyNodal, officerEvaluateProposal);
 
-// POST /api/proposals/:id/sandbox-run
+// POST /api/proposals/:id/run-sandbox
 // Startup only
-router.post('/:id/sandbox-run', verifyToken, verifyStartup, runSandboxTest);
+router.post('/:id/run-sandbox', verifyToken, verifyStartup, runSandbox);
+
+// GET /api/proposals/:id/sandbox-status
+// Any authenticated user
+router.get('/:id/sandbox-status', verifyToken, getSandboxStatus);
 
 // PATCH /api/proposals/:id/award
 // Nodal Officer only
