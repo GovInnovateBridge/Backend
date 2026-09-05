@@ -4,6 +4,7 @@ const GovernmentProfile = require('../models/GovernmentProfile');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sendEmail = require('../utils/sendEmail');
+const { getMockDpiitData } = require('./mockGatewayController');
 
 const generateToken = (id, role) => {
     return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -39,10 +40,20 @@ exports.register = async (req, res) => {
 
         // Step 2: Create Linked Profiles
         if (role === 'STARTUP_FOUNDER') {
+            let dpiitDetails = null;
+            if (dpiitNumber) {
+                // Fetch the verified details from Startup India Registry
+                const response = getMockDpiitData(dpiitNumber);
+                if (response && response.api_status === "SUCCESS") {
+                    dpiitDetails = response.data;
+                }
+            }
+
             await StartupProfile.create({
                 user: user._id,
                 companyName: organization,
-                dpiitNumber: dpiitNumber
+                dpiitNumber: dpiitNumber,
+                dpiitDetails: dpiitDetails
             });
         } else if (role === 'NODAL_OFFICER' || role === 'JURY_MEMBER') {
             await GovernmentProfile.create({
@@ -110,10 +121,46 @@ exports.getMe = async (req, res) => {
     if (!req.user) {
         return res.status(404).json({ message: 'User not found' });
     }
+
+    let profile = null;
+    if (req.user.role === 'STARTUP_FOUNDER') {
+        profile = await StartupProfile.findOne({ user: req.user._id });
+    } else if (req.user.role === 'NODAL_OFFICER' || req.user.role === 'JURY_MEMBER') {
+        profile = await GovernmentProfile.findOne({ user: req.user._id });
+    }
+
     res.status(200).json({
         id: req.user._id,
         name: req.user.name,
         email: req.user.email,
-        role: req.user.role
+        role: req.user.role,
+        profile: profile
     });
+};
+
+// 5. GET ANY USER PROFILE (For Post-Evaluation view)
+exports.getUserProfile = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await User.findById(id).select('-password -otp -otpExpires');
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        let profile = null;
+        if (user.role === 'STARTUP_FOUNDER') {
+            profile = await StartupProfile.findOne({ user: user._id });
+        } else if (user.role === 'NODAL_OFFICER' || user.role === 'JURY_MEMBER') {
+            profile = await GovernmentProfile.findOne({ user: user._id });
+        }
+
+        res.status(200).json({
+            user,
+            profile
+        });
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
 };
