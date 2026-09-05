@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const StartupProfile = require('../models/StartupProfile');
+const GovernmentProfile = require('../models/GovernmentProfile');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const sendEmail = require('../utils/sendEmail');
@@ -7,8 +9,7 @@ const generateToken = (id, role) => {
     return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
-// 1. REGISTER (Generates OTP)
-// 1. REGISTER (Updated for Phase 0 Schema)
+// 1. REGISTER 
 exports.register = async (req, res) => {
     const { name, email, password, role, organization, dpiitNumber } = req.body;
 
@@ -26,16 +27,29 @@ exports.register = async (req, res) => {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpires = Date.now() + 10 * 60 * 1000;
 
+        // Step 1: Create Base User (No organization or DPIIT data here)
         user = await User.create({ 
             name,
             email, 
             password: hashedPassword, 
             role,
-            organization,
-            dpiitNumber,
             otp, 
             otpExpires 
         });
+
+        // Step 2: Create Linked Profiles
+        if (role === 'STARTUP_FOUNDER') {
+            await StartupProfile.create({
+                user: user._id,
+                companyName: organization,
+                dpiitNumber: dpiitNumber
+            });
+        } else if (role === 'NODAL_OFFICER' || role === 'JURY_MEMBER') {
+            await GovernmentProfile.create({
+                user: user._id,
+                departmentName: organization
+            });
+        }
 
         const message = `Your SIH Sahyog verification code is: ${otp}. It expires in 10 minutes.`;
         
@@ -47,7 +61,7 @@ exports.register = async (req, res) => {
     }
 };   
 
-// 2. VERIFY OTP
+// 2. VERIFY OTP 
 exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
 
@@ -70,7 +84,7 @@ exports.verifyOTP = async (req, res) => {
     }
 };
 
-// 3. LOGIN
+// 3. LOGIN 
 exports.login = async (req, res) => {
     const { email, password } = req.body;
     
@@ -91,7 +105,7 @@ exports.login = async (req, res) => {
     }
 };
 
-// 4. GET CURRENT USER [SAH-P1-K01]
+// 4. GET CURRENT USER
 exports.getMe = async (req, res) => {
     if (!req.user) {
         return res.status(404).json({ message: 'User not found' });
