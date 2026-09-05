@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
-const { maskPII, runSandboxSimulation } = require('../utils/mlAdapter');
+const { maskPII } = require('../services/mlClient');
+const { runSandboxSimulation } = require('../utils/mlAdapter');
 
 // POST /api/proposals/submit
 // Startup submits a two-envelope proposal
@@ -33,6 +34,18 @@ exports.submitProposal = async (req, res) => {
         // Generate Submission Ref
         const submissionRefNumber = proposal_metadata?.proposal_id || `PROP-${new Date().getFullYear()}-${Math.floor(Math.random() * 100000)}`;
 
+        // ML Call: Mask PII from Envelope A
+        const rawEnvelopeAText = JSON.stringify(envelope_a_technical);
+        const { redactedText, kpiVector, piiReviewPending } = await maskPII(rawEnvelopeAText);
+
+        const maskedEnvelopeA = {
+            ...envelope_a_technical,
+            rawText: rawEnvelopeAText,
+            piiRedactedText: redactedText,
+            kpiVector: kpiVector,
+            piiReviewPending: piiReviewPending || false
+        };
+
         // 4. Create and Save Proposal Document
         const newProposal = new Proposal({
             challenge: challengeId,
@@ -42,7 +55,7 @@ exports.submitProposal = async (req, res) => {
             pre_requisite_clearance,
             assigned_evaluator_pool,
             internal_db_meta,
-            envelope_a_technical,
+            envelope_a_technical: maskedEnvelopeA,
             envelope_b_financial,
             vaultLocked: true // Always locked initially
         });

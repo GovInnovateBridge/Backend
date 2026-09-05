@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Challenge = require('../models/Challenge');
-const { extractKPIs } = require('../utils/mlAdapter');
+const { extractKPIs } = require('../services/mlClient');
 
 // POST /api/challenges/create
 // Nodal Officer creates a new challenge (status defaults to DRAFT)
