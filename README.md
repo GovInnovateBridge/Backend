@@ -18,17 +18,20 @@ Sahyog aims to bridge the gap between government bodies (Nodal Officers) and inn
 Here is a breakdown of the core systems driving the platform (including the latest features implemented by our team):
 
 - **Secure JWT Authentication & Role-Based Access Control (RBAC)**: Fine-grained access for `STARTUP_FOUNDER`, `NODAL_OFFICER`, `JURY_MEMBER`, and `VIEWER`.
-- **Escrow State Machine**: A highly secure financial tracking system for milestone claims (`PENDING` ➔ `CLAIMED` ➔ `APPROVED` / `DEEMED_APPROVED` ➔ `RELEASED`).
-- **Automated 7-Day Deemed-Approval Watchdog**: A background cron job that automatically approves overdue milestones, ensuring startups get paid on time.
+- **DPIIT Startup India Integration**: Instantly fetches and verifies Startup credentials during registration.
+- **Zero-Trust TRL Validation**: Python-based AI engine verifies Software TRL (Pitch Deck Analysis) and Hardware TRL (CAD/Hostage Video analysis) to detect fraud before evaluation.
+- **Push Matchmaking & Notifications**: ML vector-search automatically matches published challenges with startup profiles and sends targeted email/in-app notifications.
+- **Escrow State Machine & Parallel Sandboxing**: Securely locks Trial Budgets for the Top 3 shortlisted startups. Funds are divided into 15-35-50% milestones.
+- **Automated 3-Day Deemed-Approval Watchdog**: A background cron job that automatically approves overdue milestones if the Nodal Officer doesn't respond in 3 days.
+- **Eviction & Partial Payments**: Officers can reject unsatisfactory milestone work, pay up to 50%, and officially evict the startup from the Sandbox.
 - **Mock PFMS Gateway**: Simulates instant financial disbursements to the Public Financial Management System.
-- **Challenge Ingestion**: Government Nodal Officers can easily create and publish problem statements.
 - **Two-Envelope Proposal System**: Startups submit proposals separated into a Technical Envelope (with ML PII masking for blind Jury evaluation) and a Financial Envelope (Vault encrypted).
-- **ML Matchmaking & Auto-Reassignment**: Automatically assigns proposals to Jury members. A background job reassigns them if left unaccepted.
-- **Two-Stage Weighted Evaluation (Phase 7)**: 
-  - **Jury**: Scores out of 70 on Technical Criteria (Innovation, Feasibility, Scalability).
-  - **Nodal Officer**: Scores out of 30 on Financial/Administrative Criteria (Budget, Timeline).
-  - Backend automatically calculates the `(Jury/70 * 60) + (Officer/30 * 40)` formula and generates **Immutable Cryptographic Scorecards**.
-- **Automated Top-3 Shortlisting**: Nodal Officers can fetch the top 3 highest-scoring proposals instantly.
+- **Two-Stage Weighted Evaluation (60/40)**: 
+  - **Jury**: Scores out of 70 on Technical Criteria and sets the **Milestone Timeline** (e.g., M1=30 Days).
+  - **Nodal Officer**: Scores out of 30 on Financial/Administrative Criteria (Envelope B).
+  - Backend calculates the `(Jury/70 * 60) + (Officer/30 * 40)` formula and generates **Immutable Cryptographic Scorecards**.
+- **Automated Top-3 Shortlisting**: Nodal Officers fetch the Top 3 highest-scoring proposals instantly for Parallel Sandboxing.
+- **QCBS Final Winner Selection**: After completing all 3 milestones, startups undergo a background API Sandbox test (Speed/Latency). The Nodal Officer selects the final single winner based on Quality-and-Cost Based Selection (QCBS).
 
 ---
 
@@ -36,29 +39,29 @@ Here is a breakdown of the core systems driving the platform (including the late
 
 ### 1. 💰 Escrow State Machine Lifecycle
 
-Our Smart Escrow system ensures secure transfers of trial budgets based on milestone completions. 
+Our Smart Escrow system ensures secure transfers of trial budgets based on milestone completions (15%, 35%, 50%) during the Parallel Sandboxing phase. 
 
 ```mermaid
 stateDiagram-v2
     direction TB
     
-    [*] --> PENDING : Escrow Frozen
+    [*] --> PENDING : Smart Escrow Frozen (M1, M2, M3)
     PENDING --> CLAIMED : Startup Claims Milestone
     
     CLAIMED --> APPROVED : Manual Approval
-    CLAIMED --> DEEMED_APPROVED : Auto-Approval (7 Days)
-    CLAIMED --> DISPUTED : Nodal Officer Rejects
+    CLAIMED --> DEEMED_APPROVED : Auto-Approval (3 Days)
+    CLAIMED --> DISPUTED : Nodal Officer Rejects (Eviction)
     
     APPROVED --> RELEASED : PFMS Simulation Triggered
     DEEMED_APPROVED --> RELEASED : PFMS Simulation Triggered
+    DISPUTED --> RELEASED : Partial PFMS Payment
     
     RELEASED --> [*]
-    DISPUTED --> [*]
 ```
 
 ### 2. ⏳ Bureaucratic "Deemed-Approval" Automation
 
-To prevent startups from being blocked by delays, our automated watchdog steps in after a deadline passes.
+To prevent startups from being blocked by delays, our automated watchdog steps in after the Jury-defined timeline (3-day grace period) passes.
 
 ```mermaid
 sequenceDiagram
@@ -69,7 +72,7 @@ sequenceDiagram
     Cron->>DB: Scan for "CLAIMED" milestones
     
     loop For each claim
-        alt If 7-Day Deadline has passed
+        alt If 3-Day Auto-Approval Deadline has passed
             Cron->>DB: Update state to DEEMED_APPROVED
             Cron->>PFMS: Trigger processPFMSDisbursement()
             PFMS-->>Cron: Return Transaction Ref
