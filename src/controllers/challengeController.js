@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const Challenge = require('../models/Challenge');
-const { extractKPIs } = require('../services/mlClient');
+const User = require('../models/User');
+const Notification = require('../models/Notification');
+const { extractKPIs, vectorSearch } = require('../services/mlClient');
+const { sendEmail } = require('../services/emailService');
 
 // POST /api/challenges/create
 // Nodal Officer creates a new challenge (status defaults to DRAFT)
@@ -68,10 +71,55 @@ exports.publishChallenge = async (req, res) => {
 
         challenge.status = 'PUBLISHED';
         challenge.publishedAt = new Date();
+        
+        // 1. Set 7-day application deadline
+        const deadline = new Date();
+        deadline.setDate(deadline.getDate() + 7);
+        challenge.applicationDeadline = deadline;
+
         await challenge.save();
 
+        // 2. SMART MATCHMAKING (Push Notifications)
+        // Find all active Startup Founders
+        const startups = await User.find({ role: 'STARTUP_FOUNDER', isActive: true });
+        
+        if (startups.length > 0 && challenge.extractedKPIs?.kpiVector) {
+            const startupVectors = startups.map(s => ({
+                proposalId: s._id.toString(), // Repurposing proposalId for userId in the generic ML wrapper
+                vector: s.kpiVector || []
+            }));
+
+            // ML Call: Vector Search against Startup Profiles
+            const mlResponse = await vectorSearch(challenge.extractedKPIs.kpiVector, startupVectors);
+            
+            if (mlResponse && mlResponse.ranked) {
+                // Filter matches > 80% (0.8)
+                const highMatches = mlResponse.ranked.filter(r => r.matchScore >= 0.8);
+                
+                for (const match of highMatches) {
+                    const startupUser = startups.find(s => s._id.toString() === match.proposalId);
+                    if (startupUser) {
+                        // Create Notification
+                        await Notification.create({
+                            recipient: startupUser._id,
+                            title: '🎯 New Matching Challenge Released!',
+                            message: `A new Problem Statement (${challenge.psNumber}) matching your profile has been released. You have 7 days to submit your proposal. Deadline: ${deadline.toDateString()}`,
+                            challengeId: challenge._id
+                        });
+
+                        // Send Email Notification
+                        await sendEmail(
+                            startupUser.email,
+                            '🎯 GovInnovateBridge: New Matching Challenge!',
+                            `Hello ${startupUser.name},\n\nA new Problem Statement (${challenge.psNumber}) matching your startup's KPIs (${(match.matchScore*100).toFixed(0)}% match) has been published.\n\nYou have 7 days to submit your proposal.\n\nRegards,\nGovInnovateBridge Team`
+                        );
+                    }
+                }
+            }
+        }
+
         res.status(200).json({
-            message: 'Challenge published successfully!',
+            message: 'Challenge published successfully! Notifications sent to matching startups.',
             challenge
         });
     } catch (error) {

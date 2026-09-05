@@ -34,8 +34,13 @@ async function runTests() {
         await axios.post(`${BASE_URL}/auth/register`, { name: "Startup CEO", email: startupEmail, password: "password123", role: "STARTUP_FOUNDER", organization: "AI Startup", dpiitNumber: "DPIIT123456" });
         await axios.post(`${BASE_URL}/auth/register`, { name: "Jury Expert", email: juryEmail, password: "password123", role: "JURY_MEMBER", organization: "IIT Delhi" });
 
-        // Auto verify
-        await User.updateMany({ email: { $in: [nodalEmail, startupEmail, juryEmail] } }, { isVerified: true });
+        // Auto verify and add Mock KPI Vector to Startup for Push Matchmaking
+        await User.updateMany({ email: { $in: [nodalEmail, juryEmail] } }, { isVerified: true });
+        await User.updateOne({ email: startupEmail }, { 
+            isVerified: true, 
+            profileDescription: "We build Edge AI solutions for Smart Cities",
+            kpiVector: [0.9, 0.8, 0.2, 0.1, 0.5] 
+        });
 
         const nodalToken = (await axios.post(`${BASE_URL}/auth/login`, { email: nodalEmail, password: "password123" })).data.token;
         const startupToken = (await axios.post(`${BASE_URL}/auth/login`, { email: startupEmail, password: "password123" })).data.token;
@@ -50,7 +55,11 @@ async function runTests() {
         }, { headers: { Authorization: `Bearer ${nodalToken}` } });
         const challengeId = challengeRes.data.challenge._id;
         await axios.patch(`${BASE_URL}/challenges/${challengeId}/publish`, {}, { headers: { Authorization: `Bearer ${nodalToken}` } });
-        console.log(`✅ Challenge Created & Published! ID: ${challengeId}\n`);
+        console.log(`✅ Challenge Created & Published! ID: ${challengeId}`);
+
+        // Phase 10: Check Notifications
+        const notificationsRes = await axios.get(`${BASE_URL}/notifications`, { headers: { Authorization: `Bearer ${startupToken}` } });
+        console.log(`✅ Push Matchmaking: Startup received ${notificationsRes.data.length} notifications!\n`);
 
         console.log("📝 3. Startup submitting Two-Envelope Proposal...");
         const proposalRes = await axios.post(`${BASE_URL}/proposals/submit`, {

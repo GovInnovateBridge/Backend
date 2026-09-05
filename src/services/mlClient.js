@@ -30,6 +30,7 @@ async function extractKPIs(problemStatementRaw) {
             detected_keywords: ["AI", "Blockchain", "IoT", "Data"], // Default fakes
             complexity_level: "Medium"
         },
+        kpiVector: [0.8, 0.9, 0.1, 0.3, 0.6], // Added for mock Matchmaking
         confidence: 0
     };
 
