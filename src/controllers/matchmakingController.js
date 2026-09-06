@@ -1,8 +1,9 @@
-const Challenge = require('../models/Challenge');
+﻿const Challenge = require('../models/Challenge');
 const Proposal = require('../models/Proposal');
-const { vectorSearch } = require('../services/mlClient');
+const { semanticTriage } = require('../services/mlFiltrationService');
 
 // GET /api/challenges/:id/matches
+// Uses ML Semantic Triage to rank proposals by similarity to the Problem Statement
 exports.getMatches = async (req, res) => {
     try {
         const { id } = req.params;
@@ -14,35 +15,40 @@ exports.getMatches = async (req, res) => {
         }
 
         // Fetch all proposals for this challenge
-        // We do NOT fetch envelope_b_financial here to respect vault security.
         const proposals = await Proposal.find({ challenge: id }).populate('submittedBy', 'name');
 
         if (!proposals || proposals.length === 0) {
             return res.status(200).json({ matches: [] });
         }
 
-        const candidateVectors = proposals.map(p => ({
-            proposalId: p._id.toString(),
-            vector: p.envelope_a_technical?.kpiVector || [],
-            founderName: p.submittedBy?.name || 'Unknown'
+        // Build the payload for ML semantic triage
+        const proposalPayloads = proposals.map(p => ({
+            id: p._id.toString(),
+            text: p.envelope_a_technical?.piiRedactedText || p.envelope_a_technical?.startup_pitch || JSON.stringify(p.envelope_a_technical)
         }));
 
-        const challengeKpiVector = challenge.extractedKPIs?.kpiVector || [];
+        // ML Call: Semantic Triage using text-embedding-004 + Cosine Similarity
+        const mlResponse = await semanticTriage(challenge.problemStatementRaw, proposalPayloads);
 
-        // ML Call: Vector Search
-        const mlResponse = await vectorSearch(challengeKpiVector, candidateVectors);
-
-        // Enhance ML response with founder names
-        const rankedMatches = (mlResponse?.ranked || []).slice(0, limit).map(r => {
-            const candidate = candidateVectors.find(c => c.proposalId === r.proposalId);
+        // Map ML results back to proposal metadata
+        const rankedMatches = (mlResponse?.matches || []).slice(0, limit).map(match => {
+            const proposal = proposals.find(p => p._id.toString() === match.id);
             return {
-                proposalId: r.proposalId,
-                founderName: candidate ? candidate.founderName : 'Unknown',
-                matchScore: r.matchScore
+                proposalId: match.id,
+                founderName: proposal?.submittedBy?.name || 'Unknown',
+                submissionRef: proposal?.submissionRefNumber || 'N/A',
+                matchScore: match.score,
+                verifiedTrl: proposal?.verified_trl_score || 0
             };
         });
 
-        res.status(200).json({ matches: rankedMatches });
+        res.status(200).json({
+            challengeTitle: challenge.title,
+            totalProposals: proposals.length,
+            matchedAboveThreshold: rankedMatches.length,
+            matches: rankedMatches,
+            _fallback: mlResponse?._fallback || false
+        });
     } catch (error) {
         console.error("Error in matchmaking:", error);
         res.status(500).json({ message: 'Internal server error' });

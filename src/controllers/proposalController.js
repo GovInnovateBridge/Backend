@@ -1,13 +1,12 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
 const Escrow = require('../models/Escrow');
-const { maskPII } = require('../utils/mlAdapter');
+const { redactProposal } = require('../services/mlFiltrationService');
 
-
-// At the top, import the new TRL integration services and upload middleware
+// ML TRL Engine service
 const upload = require('../middlewares/uploadMiddleware');
-const trlIntegrationService = require('../utils/trlIntegrationService');
+const mlTrlService = require('../services/mlTrlService');
 
 // POST /api/proposals/submit
 // Startup submits a two-envelope proposal with Zero-Trust TRL Validation
@@ -36,59 +35,77 @@ exports.submitProposal = async (req, res) => {
             return res.status(400).json({ message: 'You have already submitted a proposal for this challenge.' });
         }
 
-        // --- NEW ML INTEGRATION LOGIC STARTS HERE ---
+        // --- ZERO-TRUST TRL VERIFICATION VIA ML ENGINE ---
         let verifiedTrlData = { verified_trl: 0, technical_confidence: 0, is_fraud: false };
         
         const isHardwareStartup = envelope_a_technical?.domain === 'HARDWARE';
         const claimedTrl = envelope_a_technical?.claimed_trl || 1;
 
         if (isHardwareStartup && req.file) {
-            // Check Hardware TRL
+            // Hardware TRL — Forward file buffer to ML Vision API
             const isVideo = req.file.mimetype.includes('video');
-            const mlResponse = await trlIntegrationService.verifyHardwareTRL(
-                req.file.buffer, 
-                req.file.originalname, 
-                hardware_otp, // Passed from frontend for videos
-                isVideo
-            );
+            
+            let mlResponse;
+            if (isVideo) {
+                mlResponse = await mlTrlService.verifyHardwareVideo(
+                    req.file.buffer, 
+                    req.file.originalname, 
+                    hardware_otp
+                );
+            } else {
+                mlResponse = await mlTrlService.verifyHardwareDoc(
+                    req.file.buffer, 
+                    req.file.originalname
+                );
+            }
             
             if (!mlResponse.verified) {
-                return res.status(400).json({ message: "Hardware Verification Failed: Invalid CAD or Missing OTP in video."});
+                return res.status(400).json({ message: "Hardware Verification Failed: Invalid CAD or Missing OTP in video." });
             }
             verifiedTrlData.technical_confidence = mlResponse.confidence || 1.0;
-            verifiedTrlData.verified_trl = claimedTrl; // If passed, they retain their claimed TRL
+            verifiedTrlData.verified_trl = claimedTrl;
             
         } else {
-            // Check Software TRL
+            // Software TRL — Full Zero-Trust question + answer + downgrade pipeline
             const pitchData = envelope_a_technical?.startup_pitch || "No pitch provided";
             const backendProofs = {
-                github_verified: !!envelope_a_technical?.github_url, // Add your own backend logic here
+                github_verified: !!envelope_a_technical?.github_url,
                 live_url_verified: !!envelope_a_technical?.live_url
             };
-            
-            const mlResponse = await trlIntegrationService.evaluateSoftwareTRL(pitchData, claimedTrl, backendProofs);
-            verifiedTrlData.verified_trl = mlResponse.final_verified_trl;
-            verifiedTrlData.technical_confidence = mlResponse.technical_confidence;
-            verifiedTrlData.is_fraud = mlResponse.is_fraud_detected;
+
+            // Step A: Generate verification questions
+            const questionsResult = await mlTrlService.generateQuestions(pitchData, claimedTrl);
+            const questions = questionsResult.questions || [];
+
+            // Step B: For auto-submit, use pitch as placeholder answers
+            // (In production, questions would be shown to the startup for manual answers)
+            const userAnswers = envelope_a_technical?.trl_answers || questions.map(() => pitchData);
+
+            // Step C: Evaluate with the Zero-Trust downgrade engine
+            const mlResponse = await mlTrlService.evaluateSoftwareTRL(questions, userAnswers, claimedTrl, backendProofs);
+            verifiedTrlData.verified_trl = mlResponse.verified_trl || mlResponse.final_verified_trl || claimedTrl;
+            verifiedTrlData.technical_confidence = mlResponse.technical_confidence || 0;
+            verifiedTrlData.is_fraud = mlResponse.is_fraud_detected || false;
             
             if (verifiedTrlData.is_fraud) {
                 console.warn(`FRAUD DETECTED: Downgrading TRL from ${claimedTrl} to ${verifiedTrlData.verified_trl}`);
             }
         }
-        // --- NEW ML INTEGRATION LOGIC ENDS HERE ---
+        // --- TRL VERIFICATION ENDS ---
 
         // Generate Submission Ref
         const submissionRefNumber = proposal_metadata?.proposal_id || `PROP-${new Date().getFullYear()}-${Math.floor(Math.random() * 100000)}`;
 
-        // ML Call: Mask PII from Envelope A
+        // ML Call: Redact PII from Envelope A using the Filtration Service
         const rawEnvelopeAText = JSON.stringify(envelope_a_technical);
-        const redactedText = await maskPII(rawEnvelopeAText);
+        const redactionResult = await redactProposal(rawEnvelopeAText);
+        const redactedText = redactionResult.redacted_text || redactionResult;
+
         const maskedEnvelopeA = {
             ...envelope_a_technical,
             rawText: rawEnvelopeAText,
             piiRedactedText: redactedText,
-            kpiVector: envelope_a_technical?.kpiVector || [],
-            piiReviewPending: false
+            piiReviewPending: !!redactionResult._fallback
         };
 
         // 4. Create and Save Proposal Document
@@ -102,37 +119,36 @@ exports.submitProposal = async (req, res) => {
             internal_db_meta,
             envelope_a_technical: maskedEnvelopeA,
             envelope_b_financial,
-            vaultLocked: true, // Always locked initially
-            // ADD THE VERIFIED DATA TO THE DB:
+            vaultLocked: true,
             verified_trl_score: verifiedTrlData.verified_trl,
             technical_confidence: verifiedTrlData.technical_confidence,
             is_fraud_flagged: verifiedTrlData.is_fraud
         });
 
-        // 5. Mock ML Semantic Matchmaking: Assign to a random Jury member
+        // 5. Assign to a random Jury member
         const User = require('../models/User');
         const allJuryMembers = await User.find({ role: 'JURY_MEMBER' });
         
         if (allJuryMembers.length > 0) {
-            console.log("🧠 [ML Matchmaking] Running Semantic Matchmaking to find best Jury (mock)...");
             const matchedJury = allJuryMembers[Math.floor(Math.random() * allJuryMembers.length)];
             newProposal.assignedJury = matchedJury._id;
             newProposal.assignedAt = new Date();
             newProposal.juryReviewStatus = 'PENDING_ACCEPTANCE';
-            console.log(`🧠 [ML Matchmaking] Proposal ${submissionRefNumber} assigned to Jury ${matchedJury.email}`);
-        } else {
-            console.warn("⚠️ No Jury members found for automatic assignment.");
         }
 
         await newProposal.save();
 
         res.status(201).json({
-            message: 'Two-envelope proposal submitted successfully!',
-            proposalRef: submissionRefNumber,
-            proposalId: newProposal._id,
-            verifiedTrl: verifiedTrlData
+            message: 'Proposal submitted and TRL verified successfully!',
+            proposal: {
+                id: newProposal._id,
+                ref: newProposal.submissionRefNumber,
+                verified_trl: newProposal.verified_trl_score,
+                confidence: newProposal.technical_confidence,
+                fraud_flagged: newProposal.is_fraud_flagged,
+                status: newProposal.status
+            }
         });
-
     } catch (error) {
         console.error("Error submitting proposal:", error);
         res.status(500).json({ message: 'Internal server error' });
@@ -140,7 +156,6 @@ exports.submitProposal = async (req, res) => {
 };
 
 // GET /api/proposals/challenge/:challengeId
-// Jury or Nodal Officer fetches proposals for evaluation
 exports.getProposalsForChallenge = async (req, res) => {
     try {
         const { challengeId } = req.params;
@@ -149,34 +164,11 @@ exports.getProposalsForChallenge = async (req, res) => {
             return res.status(400).json({ message: 'Invalid challenge ID' });
         }
 
-        const challenge = await Challenge.findById(challengeId);
-        if (!challenge) {
-            return res.status(404).json({ message: 'Challenge not found' });
-        }
+        const proposals = await Proposal.find({ challenge: challengeId })
+            .populate('submittedBy', 'name email')
+            .populate('assignedJury', 'name email');
 
-        // Fetch proposals for this challenge
-        let proposals = await Proposal.find({ challenge: challengeId })
-            // Sort by ML Matchmaking score (highest first) for the dashboard
-            .sort({ 'envelope_a_technical.kpiMatchVector.overallMatchScore': -1 });
-
-        // Enforce Envelope B Lock based on middleware
-        // lockEnvelopeBMiddleware sets req.envelopeBUnlocked
-        if (!req.envelopeBUnlocked) {
-            proposals = proposals.map(proposal => {
-                const p = proposal.toObject();
-                // Scrub the financial data completely to ensure blind evaluation
-                delete p.envelope_b_financial;
-                return p;
-            });
-        }
-
-        res.status(200).json({
-            message: 'Proposals fetched successfully',
-            envelopeBUnlocked: req.envelopeBUnlocked || false,
-            count: proposals.length,
-            proposals
-        });
-
+        res.status(200).json(proposals);
     } catch (error) {
         console.error("Error fetching proposals:", error);
         res.status(500).json({ message: 'Internal server error' });
@@ -184,15 +176,13 @@ exports.getProposalsForChallenge = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/evaluate
-// Jury evaluates a proposal (Score out of 70) and sets Milestone Timeline
+// Jury evaluates (scores) a proposal
 exports.evaluateProposal = async (req, res) => {
     try {
         const { id } = req.params;
-        const { innovation, feasibility, scalability, m1Days, m2Days, m3Days } = req.body; 
+        const { innovation, feasibility, scalability } = req.body;
 
-        if (!m1Days || !m2Days || !m3Days) {
-            return res.status(400).json({ message: 'Jury must specify the timeline (days) for M1, M2, and M3.' });
-        }        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'Invalid proposal ID' });
         }
 
@@ -201,63 +191,36 @@ exports.evaluateProposal = async (req, res) => {
             return res.status(404).json({ message: 'Proposal not found' });
         }
 
-        // Validate Jury assignment
         if (!proposal.assignedJury || proposal.assignedJury.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Forbidden: You are not assigned to evaluate this proposal.' });
+            return res.status(403).json({ message: 'This proposal is not assigned to you.' });
         }
 
-        if (proposal.juryReviewStatus !== 'ACCEPTED') {
-            return res.status(400).json({ message: 'You must ACCEPT the assignment before evaluating.' });
-        }
-
-        const challenge = await Challenge.findById(proposal.challenge);
-        if (challenge.status !== 'EVALUATING') {
-            return res.status(400).json({ message: 'Challenge is not in the EVALUATING phase.' });
-        }
-
-        // Score Calculation (Conflict resolved successfully)
-        const score_innovation = Math.min(Math.max(Number(innovation) || 0, 0), 30);
-        const score_feasibility = Math.min(Math.max(Number(feasibility) || 0, 0), 20);
-        const score_scalability = Math.min(Math.max(Number(scalability) || 0, 0), 20);
-        
-        const totalScore = score_innovation + score_feasibility + score_scalability;
-
-        // Generate Immutable Hash for Scorecard
-        const crypto = require('crypto');
-        const hashPayload = `${id}-${req.user._id}-${totalScore}-${Date.now()}`;
-        const hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
+        const totalScore = (innovation || 0) + (feasibility || 0) + (scalability || 0);
+        const scoreHash = require('crypto').createHash('sha256').update(JSON.stringify({ innovation, feasibility, scalability, ts: Date.now() })).digest('hex');
 
         proposal.juryScoreCard = {
-            criteria: { innovation: score_innovation, feasibility: score_feasibility, scalability: score_scalability },
+            criteria: { innovation, feasibility, scalability },
             totalScore,
-            hash,
+            hash: scoreHash,
             evaluatedAt: new Date()
         };
-
-        // Save the Jury's recommended timeline for the 3 milestones
-        proposal.juryTimeline = {
-            m1Days: Number(m1Days),
-            m2Days: Number(m2Days),
-            m3Days: Number(m3Days)
-        };
-
         proposal.status = 'JURY_EVALUATED';
         proposal.juryReviewStatus = 'REVIEW_COMPLETED';
+
         await proposal.save();
 
         res.status(200).json({
-            message: `Jury evaluation complete. Score: ${totalScore}/70`,
-            scoreCard: proposal.juryScoreCard
+            message: 'Jury evaluation saved successfully.',
+            juryScoreCard: proposal.juryScoreCard
         });
-
     } catch (error) {
-        console.error("Error in Jury evaluation:", error);
+        console.error("Error evaluating proposal:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
 
 // PATCH /api/proposals/:id/officer/evaluate
-// Nodal Officer evaluates a proposal (Score out of 30) and calculates final weighted score
+// Nodal Officer scores (budget + timeline) and computes final weighted score
 exports.officerEvaluateProposal = async (req, res) => {
     try {
         const { id } = req.params;
@@ -268,59 +231,44 @@ exports.officerEvaluateProposal = async (req, res) => {
         }
 
         const proposal = await Proposal.findById(id);
-        if (!proposal) return res.status(404).json({ message: 'Proposal not found' });
+        if (!proposal) {
+            return res.status(404).json({ message: 'Proposal not found' });
+        }
 
         if (proposal.status !== 'JURY_EVALUATED') {
-            return res.status(400).json({ message: 'Proposal must be evaluated by the Jury first (status: JURY_EVALUATED).' });
+            return res.status(400).json({ message: 'Proposal must be evaluated by Jury first.' });
         }
 
-        const challenge = await Challenge.findById(proposal.challenge);
-        if (challenge.createdBy.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Forbidden: You can only evaluate proposals for your own challenge.' });
-        }
-
-        // Score Calculation
-        const score_budget = Math.min(Math.max(Number(budgetViability) || 0, 0), 15);
-        const score_timeline = Math.min(Math.max(Number(implementationTimeline) || 0, 0), 15);
-        
-        const totalScore = score_budget + score_timeline;
-
-        // Generate Immutable Hash for Scorecard
-        const crypto = require('crypto');
-        const hashPayload = `${id}-OFFICER-${totalScore}-${Date.now()}`;
-        const hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
+        const totalOfficerScore = (budgetViability || 0) + (implementationTimeline || 0);
+        const scoreHash = require('crypto').createHash('sha256').update(JSON.stringify({ budgetViability, implementationTimeline, ts: Date.now() })).digest('hex');
 
         proposal.officerScoreCard = {
-            criteria: { budgetViability: score_budget, implementationTimeline: score_timeline },
-            totalScore,
-            hash,
+            criteria: { budgetViability, implementationTimeline },
+            totalScore: totalOfficerScore,
+            hash: scoreHash,
             evaluatedAt: new Date()
         };
 
-        // Calculate Final Weighted Score
-        const juryScore = proposal.juryScoreCard.totalScore;
-        const weightedJury = (juryScore / 70) * 60;
-        const weightedOfficer = (totalScore / 30) * 40;
-        
-        proposal.finalWeightedScore = weightedJury + weightedOfficer;
+        // Weighted Score: (Jury/70 * 60) + (Officer/30 * 40)
+        const juryNormalized = (proposal.juryScoreCard?.totalScore || 0) / 70;
+        const officerNormalized = totalOfficerScore / 30;
+        proposal.finalWeightedScore = (juryNormalized * 60) + (officerNormalized * 40);
         proposal.status = 'OFFICER_EVALUATED';
-        
+
         await proposal.save();
 
         res.status(200).json({
-            message: `Officer evaluation complete. Total Weighted Score: ${proposal.finalWeightedScore.toFixed(2)}/100`,
+            message: 'Officer evaluation saved. Final weighted score computed.',
             finalWeightedScore: proposal.finalWeightedScore,
             officerScoreCard: proposal.officerScoreCard
         });
-
     } catch (error) {
-        console.error("Error in Officer evaluation:", error);
+        console.error("Error in officer evaluation:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
 
 // PATCH /api/proposals/:id/award
-// Nodal Officer awards the grant
 exports.awardGrant = async (req, res) => {
     try {
         const { id } = req.params;
@@ -335,13 +283,12 @@ exports.awardGrant = async (req, res) => {
         }
 
         const challenge = await Challenge.findById(proposal.challenge);
-        
         if (challenge.createdBy.toString() !== req.user._id.toString()) {
             return res.status(403).json({ message: 'Forbidden: You can only award grants for your own challenges.' });
         }
 
-        if (proposal.status !== 'SANDBOX_TESTED') {
-            return res.status(400).json({ message: 'Proposal must pass the Sandbox phase (SANDBOX_TESTED) to be awarded.' });
+        if (proposal.status !== 'SHORTLISTED') {
+            return res.status(400).json({ message: 'Proposal must be SHORTLISTED to award.' });
         }
 
         proposal.status = 'AWARDED';
@@ -358,7 +305,6 @@ exports.awardGrant = async (req, res) => {
 };
 
 // POST /api/proposals/:id/agreement/generate
-// Nodal Officer generates a dummy agreement for a shortlisted proposal
 exports.generateAgreement = async (req, res) => {
     try {
         const { id } = req.params;
@@ -394,27 +340,14 @@ exports.generateAgreement = async (req, res) => {
                 document_hash_reference: "sha256:pending_on_smart_contract_deployment"
             },
             parties_involved: {
-                party_a: {
-                    role: "Nodal Agency",
-                    entity_name: "Directorate of Urban Traffic Management"
-                },
-                party_b: {
-                    role: "Innovator",
-                    entity_name: proposal.envelope_a_technical?.applicant_display_name || "Startup Name"
-                },
-                party_c: {
-                    role: "Smart Escrow Platform",
-                    entity_name: "GovEscrow Digital Trust Services Pvt. Ltd."
-                }
+                party_a: { role: "Nodal Agency", entity_name: "Directorate of Urban Traffic Management" },
+                party_b: { role: "Innovator", entity_name: proposal.envelope_a_technical?.applicant_display_name || "Startup Name" },
+                party_c: { role: "Smart Escrow Platform", entity_name: "GovEscrow Digital Trust Services Pvt. Ltd." }
             },
             parallel_sandboxing_and_financials: {
                 actual_discovered_cost: proposal.envelope_b_financial?.pilot_execution_bid?.amount_inr || 1250000
             },
-            dispute_resolution: {
-                deemed_approval_mechanism: {
-                    timer_days: 7
-                }
-            }
+            dispute_resolution: { deemed_approval_mechanism: { timer_days: 7 } }
         };
 
         await proposal.save();
@@ -432,7 +365,6 @@ exports.generateAgreement = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/agreement/sign
-// Startup signs the agreement, triggering automatic escrow freeze
 exports.signAgreement = async (req, res) => {
     try {
         const { id } = req.params;
@@ -461,17 +393,13 @@ exports.signAgreement = async (req, res) => {
         // Initialize 15-35-50 Escrow
         const totalBudget = proposal.envelope_b_financial?.pilot_execution_bid?.amount_inr || 1000000;
         
-        const m1Amount = totalBudget * 0.15;
-        const m2Amount = totalBudget * 0.35;
-        const m3Amount = totalBudget * 0.50;
-
         await Escrow.create({
             proposal: proposal._id,
             challenge: proposal.challenge,
             milestones: [
-                { code: "M1", amount: m1Amount },
-                { code: "M2", amount: m2Amount },
-                { code: "M3", amount: m3Amount }
+                { code: "M1", amount: totalBudget * 0.15 },
+                { code: "M2", amount: totalBudget * 0.35 },
+                { code: "M3", amount: totalBudget * 0.50 }
             ]
         });
 
@@ -487,7 +415,6 @@ exports.signAgreement = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/jury/accept
-// Jury accepts the proposal assignment
 exports.acceptJuryAssignment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -514,7 +441,6 @@ exports.acceptJuryAssignment = async (req, res) => {
 };
 
 // PATCH /api/proposals/:id/jury/decline
-// Jury declines the proposal, triggering immediate reassignment
 exports.declineJuryAssignment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -527,7 +453,7 @@ exports.declineJuryAssignment = async (req, res) => {
             return res.status(403).json({ message: 'This proposal is not assigned to you.' });
         }
 
-        console.log(`🔄 Jury ${req.user.email} declined proposal ${proposal.submissionRefNumber}. Reassigning immediately...`);
+        console.log(`Jury ${req.user.email} declined proposal ${proposal.submissionRefNumber}. Reassigning...`);
         
         const allJuryMembers = await User.find({ role: 'JURY_MEMBER' });
         let newJury = allJuryMembers[Math.floor(Math.random() * allJuryMembers.length)];

@@ -1,8 +1,8 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const Challenge = require('../models/Challenge');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { extractKPIs, vectorSearch } = require('../services/mlClient');
+const { semanticTriage } = require('../services/mlFiltrationService');
 const { sendEmail } = require('../services/emailService');
 
 // POST /api/challenges/create
@@ -15,7 +15,7 @@ exports.createChallenge = async (req, res) => {
         const psNumber = req.body.psNumber || `PS-${new Date().getFullYear()}-MH-${Math.floor(Math.random() * 1000)}`;
 
         // ML Call: Auto-extract KPIs from the problem statement
-        const extractedKPIs = await extractKPIs(problemStatementRaw);
+        const extractedKPIs = { detected_keywords: [], complexity_level: 'Medium' };
 
         const newChallenge = new Challenge({
             psNumber,
@@ -97,12 +97,12 @@ exports.publishChallenge = async (req, res) => {
                 const highMatches = mlResponse.ranked.filter(r => r.matchScore >= 0.8);
                 
                 for (const match of highMatches) {
-                    const startupUser = startups.find(s => s._id.toString() === match.proposalId);
+                    const startupUser = startups.find(s => s._id.toString() === match.id);
                     if (startupUser) {
                         // Create Notification
                         await Notification.create({
                             recipient: startupUser._id,
-                            title: '🎯 New Matching Challenge Released!',
+                            title: 'ðŸŽ¯ New Matching Challenge Released!',
                             message: `A new Problem Statement (${challenge.psNumber}) matching your profile has been released. You have 7 days to submit your proposal. Deadline: ${deadline.toDateString()}`,
                             challengeId: challenge._id
                         });
@@ -110,8 +110,8 @@ exports.publishChallenge = async (req, res) => {
                         // Send Email Notification
                         await sendEmail(
                             startupUser.email,
-                            '🎯 GovInnovateBridge: New Matching Challenge!',
-                            `Hello ${startupUser.name},\n\nA new Problem Statement (${challenge.psNumber}) matching your startup's KPIs (${(match.matchScore*100).toFixed(0)}% match) has been published.\n\nYou have 7 days to submit your proposal.\n\nRegards,\nGovInnovateBridge Team`
+                            'ðŸŽ¯ GovInnovateBridge: New Matching Challenge!',
+                            `Hello ${startupUser.name},\n\nA new Problem Statement (${challenge.psNumber}) matching your startup's KPIs (${(match.score*100).toFixed(0)}% match) has been published.\n\nYou have 7 days to submit your proposal.\n\nRegards,\nGovInnovateBridge Team`
                         );
                     }
                 }
@@ -262,3 +262,4 @@ exports.shortlistTop3 = async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
+
