@@ -30,8 +30,9 @@ const lockEnvelopeB = async (req, res, next) => {
                     req.envelopeBUnlocked = false;
                 } 
                 // Rule 2: Nodal Officers can unlock during evaluation or active sandbox phases
-                else if (req.user.role === 'NODAL_OFFICER') {
-                    if (challenge.status === 'EVALUATING' || challenge.status === 'SANDBOX_ACTIVE') {
+                else if (req.user.role === 'NODAL_OFFICER' || req.user.role === 'nodal_officer') {
+                    // Only unlock if technical evaluation is complete (e.g. status is TECHNICAL_EVALUATED, SANDBOX_ACTIVE, OFFICER_EVALUATED, AWARDED, etc)
+                    if (challenge.status !== 'PUBLISHED' && challenge.status !== 'SUBMISSION' && challenge.status !== 'TECHNICAL_EVALUATION') {
                         req.envelopeBUnlocked = true;
                     }
                 }

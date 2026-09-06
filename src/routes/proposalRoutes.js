@@ -2,17 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { submitProposal, getProposalsForChallenge, evaluateProposal, officerEvaluateProposal, awardGrant, generateAgreement, signAgreement, acceptJuryAssignment, declineJuryAssignment } = require('../controllers/proposalController');
 const { runSandbox, getSandboxStatus } = require('../controllers/sandboxController');
-const { verifyToken, verifyStartup, verifyJury, verifyNodal } = require('../middlewares/authMiddleware');
+const { verifyToken, verifyStartup, verifyJury, verifyNodal, verifyRole } = require('../middlewares/authMiddleware');
 const lockEnvelopeB = require('../middlewares/lockEnvelopeBMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
 
 // POST /api/proposals/submit
 // Startup Founder only
-router.post('/submit', verifyToken, verifyStartup, upload.single('file'), submitProposal);
+router.post('/submit', verifyToken, verifyRole(['STARTUP', 'STARTUP_FOUNDER']), upload.single('file'), submitProposal);
 
 // GET /api/proposals/challenge/:challengeId
 // Jury or Nodal Officer fetches proposals (with Envelope B lock)
-router.get('/challenge/:challengeId', verifyToken, lockEnvelopeB, getProposalsForChallenge);
+router.get('/challenge/:challengeId', verifyToken, verifyRole(['NODAL_OFFICER', 'JURY_MEMBER', 'nodal_officer', 'jury_member']), lockEnvelopeB, getProposalsForChallenge);
 
 // PATCH /api/proposals/:id/evaluate
 // Jury only

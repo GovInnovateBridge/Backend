@@ -13,8 +13,17 @@ const trlIntegrationService = require('../utils/trlIntegrationService');
 // Startup submits a two-envelope proposal with Zero-Trust TRL Validation
 exports.submitProposal = async (req, res) => {
     try {
-        const { challengeId, proposal_metadata, pre_requisite_clearance, assigned_evaluator_pool, internal_db_meta, envelope_a_technical, envelope_b_financial, hardware_otp } = req.body;
+        const { challengeId, proposal_metadata, pre_requisite_clearance, assigned_evaluator_pool, internal_db_meta, hardware_otp } = req.body;
 
+        let envelope_a_technical = req.body.envelope_a_technical;
+        let envelope_b_financial = req.body.envelope_b_financial;
+
+        if (typeof envelope_a_technical === 'string') {
+            try { envelope_a_technical = JSON.parse(envelope_a_technical); } catch (e) { console.error("Error parsing envelope_a_technical:", e); }
+        }
+        if (typeof envelope_b_financial === 'string') {
+            try { envelope_b_financial = JSON.parse(envelope_b_financial); } catch (e) { console.error("Error parsing envelope_b_financial:", e); }
+        }
         // 1. Validation Checks
         if (!mongoose.Types.ObjectId.isValid(challengeId)) {
             return res.status(400).json({ message: 'Invalid challenge ID' });
@@ -346,9 +355,14 @@ exports.awardGrant = async (req, res) => {
 
         proposal.status = 'AWARDED';
         await proposal.save();
+        
+        // Mock locking the final GFR 194 bid amount into the smart escrow
+        const finalBidAmount = proposal.envelope_b_financial?.pilot_execution_bid?.amount_inr || 0;
+        console.log(`[Smart Escrow] Locked final GFR 194 bid amount: INR ${finalBidAmount} into mock escrow for Proposal ${id}`);
 
         res.status(200).json({
-            message: 'Congratulations! The grant has been successfully AWARDED to the startup.',
+            message: 'Congratulations! The grant has been successfully AWARDED to the startup. Final GFR 194 bid amount is locked into smart escrow.',
+            escrowLockedAmount: finalBidAmount,
             proposal
         });
     } catch (error) {

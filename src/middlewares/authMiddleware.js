@@ -46,3 +46,19 @@ exports.verifyJury = async (req, res, next) => {
         res.status(403).json({ error: "Forbidden: insufficient role, jury member required" });
     }
 };
+
+exports.verifyRole = (roles) => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+        
+        const hasRole = roles.includes(req.user.role) || roles.includes(req.user.role.toUpperCase());
+        
+        if (hasRole) {
+            next();
+        } else {
+            res.status(403).json({ message: 'Forbidden: insufficient permissions' });
+        }
+    };
+};
