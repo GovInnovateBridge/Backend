@@ -17,3 +17,5 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 } // 50 MB max limit for hardware hostage videos
 
 });
+
+module.exports = upload;

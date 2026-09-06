@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const Proposal = require('../models/Proposal');
 const Challenge = require('../models/Challenge');
-const { maskPII } = require('../services/mlClient');
+const { maskPII } = require('../utils/mlAdapter');
 
 // At the top, import the new TRL integration services and upload middleware
 const upload = require('../middlewares/uploadMiddleware');
@@ -80,14 +80,13 @@ exports.submitProposal = async (req, res) => {
 
         // ML Call: Mask PII from Envelope A
         const rawEnvelopeAText = JSON.stringify(envelope_a_technical);
-        const { redactedText, kpiVector, piiReviewPending } = await maskPII(rawEnvelopeAText);
-
+        const redactedText = await maskPII(rawEnvelopeAText);
         const maskedEnvelopeA = {
             ...envelope_a_technical,
             rawText: rawEnvelopeAText,
             piiRedactedText: redactedText,
-            kpiVector: kpiVector,
-            piiReviewPending: piiReviewPending || false
+            kpiVector: envelope_a_technical?.kpiVector || [],
+            piiReviewPending: false
         };
 
         // 4. Create and Save Proposal Document

@@ -4,10 +4,11 @@ const { submitProposal, getProposalsForChallenge, evaluateProposal, officerEvalu
 const { runSandbox, getSandboxStatus } = require('../controllers/sandboxController');
 const { verifyToken, verifyStartup, verifyJury, verifyNodal } = require('../middlewares/authMiddleware');
 const lockEnvelopeB = require('../middlewares/lockEnvelopeBMiddleware');
+const upload = require('../middlewares/uploadMiddleware');
 
 // POST /api/proposals/submit
 // Startup Founder only
-router.post('/submit', verifyToken, verifyStartup, submitProposal);
+router.post('/submit', verifyToken, verifyStartup, upload.single('file'), submitProposal);
 
 // GET /api/proposals/challenge/:challengeId
 // Jury or Nodal Officer fetches proposals (with Envelope B lock)
@@ -48,5 +49,7 @@ router.patch('/:id/jury/accept', verifyToken, verifyJury, acceptJuryAssignment);
 // PATCH /api/proposals/:id/jury/decline
 // Jury only
 router.patch('/:id/jury/decline', verifyToken, verifyJury, declineJuryAssignment);
+
+
 
 module.exports = router;
