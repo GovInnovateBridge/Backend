@@ -22,17 +22,9 @@ exports.disbursePFMS = (req, res) => {
     return res.status(200).json(data);
 };
 
-// GET /api/mock/dpiit/:dpiitNumber
-// Simulates fetching startup data from Startup India Registry (API Setu)
-exports.fetchDPIITDetails = (req, res) => {
-    const { dpiitNumber } = req.params;
-
-    if (!dpiitNumber) {
-        return res.status(400).json({ message: "DPIIT number is required." });
-    }
-
-    // Standard format response mimicking API Setu / DPIIT Database
-    const mockData = {
+// Helper for internal use (e.g., Auth Registration)
+exports.getMockDpiitData = (dpiitNumber) => {
+    return {
         "api_status": "SUCCESS",
         "response_code": 200,
         "timestamp": new Date().toISOString(),
@@ -132,6 +124,18 @@ exports.fetchDPIITDetails = (req, res) => {
             }
         }
     };
+};
+
+// GET /api/mock/dpiit/:dpiitNumber
+// Simulates fetching startup data from Startup India Registry (API Setu)
+exports.fetchDPIITDetails = (req, res) => {
+    const { dpiitNumber } = req.params;
+
+    if (!dpiitNumber) {
+        return res.status(400).json({ message: "DPIIT number is required." });
+    }
+
+    const mockData = exports.getMockDpiitData(dpiitNumber);
 
     return res.status(200).json(mockData);
 };

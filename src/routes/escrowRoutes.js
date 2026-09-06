@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { claimMilestone, approveMilestone, getEscrows } = require('../controllers/escrowController');
+const { claimMilestone, approveMilestone, rejectMilestone, getEscrows } = require('../controllers/escrowController');
 
 // Real JWT Auth Middleware
 const protect = async (req, res, next) => {
@@ -40,5 +40,6 @@ router.get('/', protect, getEscrows);
 
 router.post('/claim-milestone', protect, restrictTo('STARTUP_FOUNDER'), claimMilestone);
 router.post('/approve', protect, restrictTo('NODAL_OFFICER'), approveMilestone);
+router.post('/reject', protect, restrictTo('NODAL_OFFICER'), rejectMilestone);
 
 module.exports = router;

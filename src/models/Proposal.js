@@ -67,6 +67,12 @@ const proposalSchema = new mongoose.Schema({
         default: "PENDING_ACCEPTANCE"
     },
 
+    juryTimeline: {
+        m1Days: { type: Number },
+        m2Days: { type: Number },
+        m3Days: { type: Number }
+    },
+
     // =========================================================================
     // TWO-STAGE WEIGHTED EVALUATION
     // =========================================================================
@@ -93,7 +99,7 @@ const proposalSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: ["SUBMITTED", "JURY_EVALUATED", "OFFICER_EVALUATED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED"],
+        enum: ["SUBMITTED", "JURY_EVALUATED", "OFFICER_EVALUATED", "SHORTLISTED", "SANDBOX_TESTED", "REJECTED", "AWARDED", "EVICTED_FROM_SANDBOX"],
         default: "SUBMITTED"
     }
 }, { timestamps: true });
