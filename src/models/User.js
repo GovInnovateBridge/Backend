@@ -16,7 +16,9 @@ const userSchema = new mongoose.Schema({
 
     // Startup Profile Fields (used for Matchmaking)
     profileDescription: { type: String },
-    kpiVector: { type: [Number], default: [] }
+    kpiVector: { type: [Number], default: [] },
+    hasCompletedTrl: { type: Boolean, default: false },
+    verifiedTrlScore: { type: Number, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

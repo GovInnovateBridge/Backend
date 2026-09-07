@@ -1,8 +1,9 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { verifyToken, verifyStartup } = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
 const mlTrlService = require('../services/mlTrlService');
+const User = require('../models/User');
 
 // POST /api/trl/generate-questions
 // Standalone endpoint for the TRL Quiz page
@@ -29,6 +30,9 @@ router.post('/evaluate-software', verifyToken, verifyStartup, async (req, res) =
             return res.status(400).json({ message: 'questions, user_answers, and claimed_trl are required.' });
         }
         const result = await mlTrlService.evaluateSoftwareTRL(questions, user_answers, claimed_trl, backend_proofs || {});
+        if (result && result.verified_trl !== undefined) {
+            await User.findByIdAndUpdate(req.user.id || req.user._id, { hasCompletedTrl: true, verifiedTrlScore: result.verified_trl });
+        }
         res.status(200).json(result);
     } catch (error) {
         console.error("Error evaluating software TRL:", error);
@@ -43,6 +47,9 @@ router.post('/hardware/verify-doc', verifyToken, verifyStartup, upload.single('f
             return res.status(400).json({ message: 'File is required.' });
         }
         const result = await mlTrlService.verifyHardwareDoc(req.file.buffer, req.file.originalname);
+        if (result && result.verified_trl !== undefined) {
+            await User.findByIdAndUpdate(req.user.id || req.user._id, { hasCompletedTrl: true, verifiedTrlScore: result.verified_trl });
+        }
         res.status(200).json(result);
     } catch (error) {
         console.error("Error verifying hardware doc:", error);
@@ -61,6 +68,9 @@ router.post('/hardware/verify-video', verifyToken, verifyStartup, upload.single(
             return res.status(400).json({ message: 'expected_otp is required.' });
         }
         const result = await mlTrlService.verifyHardwareVideo(req.file.buffer, req.file.originalname, expectedOtp);
+        if (result && result.verified_trl !== undefined) {
+            await User.findByIdAndUpdate(req.user.id || req.user._id, { hasCompletedTrl: true, verifiedTrlScore: result.verified_trl });
+        }
         res.status(200).json(result);
     } catch (error) {
         console.error("Error verifying hardware video:", error);
@@ -81,3 +91,4 @@ router.get('/health', async (req, res) => {
 });
 
 module.exports = router;
+
