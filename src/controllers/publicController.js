@@ -9,7 +9,7 @@ exports.getPublicChallenges = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const challenges = await Challenge.find({ status: 'PUBLISHED' })
-            .select('title problemStatementRaw publishedAt evaluationDeadline')
+            .select('title problemStatementRaw publishedAt evaluationDeadline status')
             .sort({ publishedAt: -1 })
             .skip(skip)
             .limit(limit);
