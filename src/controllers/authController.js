@@ -134,7 +134,9 @@ exports.getMe = async (req, res) => {
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
-        profile: profile
+        profile: profile,
+        hasCompletedTrl: req.user.hasCompletedTrl,
+        verifiedTrlScore: req.user.verifiedTrlScore
     });
 };
 
@@ -164,4 +166,5 @@ exports.getUserProfile = async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 };
+
 
