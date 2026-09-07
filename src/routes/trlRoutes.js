@@ -78,6 +78,17 @@ router.post('/hardware/verify-video', verifyToken, verifyStartup, upload.single(
     }
 });
 
+// POST /api/trl/bypass (DEVELOPER TESTING ONLY)
+router.post('/bypass', verifyToken, verifyStartup, async (req, res) => {
+    try {
+        await User.findByIdAndUpdate(req.user.id || req.user._id, { hasCompletedTrl: true, verifiedTrlScore: 9 });
+        res.status(200).json({ message: 'Bypassed TRL successfully' });
+    } catch (error) {
+        console.error('Error bypassing TRL:', error);
+        res.status(500).json({ message: 'Failed to bypass TRL.' });
+    }
+});
+
 // GET /api/trl/health
 router.get('/health', async (req, res) => {
     try {
@@ -91,4 +102,5 @@ router.get('/health', async (req, res) => {
 });
 
 module.exports = router;
+
 
