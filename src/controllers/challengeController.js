@@ -1,8 +1,8 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 const Challenge = require('../models/Challenge');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { semanticTriage } = require('../services/mlFiltrationService');
+const { semanticTriage, formulateChallenge } = require('../services/mlFiltrationService');
 const { sendEmail } = require('../services/emailService');
 
 // POST /api/challenges/create
@@ -14,16 +14,31 @@ exports.createChallenge = async (req, res) => {
         // Generate a random PS Number if not provided (mock generation)
         const psNumber = req.body.psNumber || `PS-${new Date().getFullYear()}-MH-${Math.floor(Math.random() * 1000)}`;
 
-        // ML Call: Auto-extract KPIs from the problem statement
-        const extractedKPIs = { detected_keywords: [], complexity_level: 'Medium' };
+        // ML Call: Auto-extract KPIs and Anti-Bias check
+        const mlResult = await formulateChallenge(problemStatementRaw);
+        
+        if (mlResult.success === false && mlResult.bias_detected) {
+            return res.status(406).json({ message: mlResult.bias_reason });
+        }
+
+        const structuredData = mlResult.data || {};
+        const generatedTitle = structuredData.title || title || 'AI Generated Challenge';
+        const generatedScope = structuredData.problem_statement || scopeOfWork;
+        const generatedKPIs = structuredData.kpis ? structuredData.kpis.map(kpi => ({ metric: kpi, target: 'Required' })) : [];
+
+        const extractedKPIs = { 
+            detected_keywords: [], 
+            complexity_level: structuredData.budget_range || 'Medium',
+            metrics: generatedKPIs
+        };
 
         const newChallenge = new Challenge({
             psNumber,
             departmentName,
             category,
-            title,
+            title: generatedTitle,
             problemStatementRaw,
-            scopeOfWork,
+            scopeOfWork: generatedScope,
             expectedDeliverables,
             pilotBudgetInr,
             evaluationDeadline,

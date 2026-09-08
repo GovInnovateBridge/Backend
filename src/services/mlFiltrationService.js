@@ -1,4 +1,4 @@
-﻿const axios = require('axios');
+const axios = require('axios');
 
 const ML_BASE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 const TIMEOUT_MS = 30000;
@@ -76,4 +76,29 @@ exports.redactProposal = async (proposalText) => {
     }, { timeout: TIMEOUT_MS }).then(res => res.data);
 
     return await withFallback(call, fallback, "redactProposal");
+};
+
+// ============================================================================
+// S4: FORMULATE CHALLENGE — POST /formulate
+// ============================================================================
+exports.formulateChallenge = async (rawText) => {
+    // Fallback: If ML is offline, fake a successful formulation
+    const fallback = {
+        success: true,
+        data: {
+            title: "AI-Drafted Problem Statement (Fallback)",
+            problem_statement: rawText,
+            kpis: ["Detection Accuracy >= 90%", "Real-time latency <= 500ms"],
+            timeline_months: 6,
+            budget_range: "Medium"
+        },
+        bias_detected: false,
+        bias_reason: null
+    };
+
+    const call = axios.post(`${ML_BASE_URL}/api/ml/formulate`, {
+        raw_text: rawText
+    }, { timeout: TIMEOUT_MS }).then(res => res.data);
+
+    return await withFallback(call, fallback, "formulateChallenge");
 };
