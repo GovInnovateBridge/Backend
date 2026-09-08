@@ -41,14 +41,15 @@ async function seedDatabase() {
             name: "Rajesh Patil",
             email: "rajesh.patil@gov.in",
             password: passwordHash,
-            role: "NODAL_OFFICER"
+            role: "NODAL_OFFICER",
+            isVerified: true
         });
         await GovernmentProfile.create({ user: nodalOfficer._id, departmentName: "Maharashtra IT Dept", designation: "Joint Secretary" });
 
         const juries = await User.insertMany([
-            { name: "Dr. Anil Sharma", email: "anil.sharma@gov.in", password: passwordHash, role: "JURY_MEMBER" },
-            { name: "Priya Desai", email: "priya.desai@gov.in", password: passwordHash, role: "JURY_MEMBER" },
-            { name: "Rahul Verma", email: "rahul.verma@gov.in", password: passwordHash, role: "JURY_MEMBER" }
+            { name: "Dr. Anil Sharma", email: "anil.sharma@gov.in", password: passwordHash, role: "JURY_MEMBER", isVerified: true },
+            { name: "Priya Desai", email: "priya.desai@gov.in", password: passwordHash, role: "JURY_MEMBER", isVerified: true },
+            { name: "Rahul Verma", email: "rahul.verma@gov.in", password: passwordHash, role: "JURY_MEMBER", isVerified: true }
         ]);
 
         for (const jury of juries) {
@@ -67,6 +68,7 @@ async function seedDatabase() {
                 email: `founder${i}@startup.com`,
                 password: passwordHash,
                 role: "STARTUP_FOUNDER",
+                isVerified: true,
                 kpiVector: [Math.random(), Math.random(), Math.random()]
             });
             startupUsers.push(user);
