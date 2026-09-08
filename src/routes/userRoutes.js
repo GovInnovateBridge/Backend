@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { claimMilestone, approveMilestone, rejectMilestone, getEscrows } = require('../controllers/escrowController');
+const { getStartupProfile, updateStartupProfile } = require('../controllers/userController');
 
-// Real JWT Auth Middleware
+// JWT Auth Middleware
 const protect = async (req, res, next) => {
     let token;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
@@ -35,18 +35,9 @@ const restrictTo = (...roles) => {
     };
 };
 
-const { submitReport, getReport, submitAnalysis } = require('../controllers/milestoneReportController');
+router.use(protect);
 
-// GET route for the frontend to fetch the escrow list and IDs
-router.get('/', protect, getEscrows);
-
-router.post('/claim-milestone', protect, restrictTo('STARTUP_FOUNDER'), claimMilestone);
-router.post('/approve', protect, restrictTo('NODAL_OFFICER'), approveMilestone);
-router.post('/reject', protect, restrictTo('NODAL_OFFICER'), rejectMilestone);
-
-// Report Routes
-router.get('/:escrowId/milestone/:milestoneCode/report', protect, getReport);
-router.post('/:escrowId/milestone/:milestoneCode/report', protect, restrictTo('STARTUP_FOUNDER'), submitReport);
-router.put('/:escrowId/milestone/:milestoneCode/analyze', protect, restrictTo('NODAL_OFFICER'), submitAnalysis);
+router.get('/profile', getStartupProfile);
+router.put('/profile', restrictTo('STARTUP_FOUNDER'), updateStartupProfile);
 
 module.exports = router;

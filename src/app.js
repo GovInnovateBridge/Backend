@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 
 const app = express();
@@ -16,6 +16,7 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/mock', require('./routes/mockRoutes'));
 app.use('/api/escrow', require('./routes/escrowRoutes'));
 app.use('/api/trl', require('./routes/trlRoutes'));
+app.use('/api/assistant', require('./routes/assistantRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
 
 module.exports = app;
-

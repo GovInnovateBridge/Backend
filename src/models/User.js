@@ -14,8 +14,14 @@ const userSchema = new mongoose.Schema({
     otp: { type: String },
     otpExpires: { type: Date },
 
-    // Startup Profile Fields (used for Matchmaking)
-    profileDescription: { type: String },
+    // Startup Profile Fields (used for Matchmaking & Profile)
+    profileDescription: { type: String, default: '' },
+    dpiitNumber: { type: String, default: null },
+    logoUrl: { type: String, default: null },
+    govTrustScore: { type: Number, default: 0 },
+    escrowsCompleted: { type: Number, default: 0 },
+    totalFundsDisbursed: { type: Number, default: 0 },
+    badges: { type: [String], default: [] },
     kpiVector: { type: [Number], default: [] },
     hasCompletedTrl: { type: Boolean, default: false },
     verifiedTrlScore: { type: Number, default: null }

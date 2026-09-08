@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { claimMilestone, approveMilestone, rejectMilestone, getEscrows } = require('../controllers/escrowController');
+const { chatWithAssistant } = require('../controllers/assistantController');
 
 // Real JWT Auth Middleware
 const protect = async (req, res, next) => {
@@ -35,18 +35,9 @@ const restrictTo = (...roles) => {
     };
 };
 
-const { submitReport, getReport, submitAnalysis } = require('../controllers/milestoneReportController');
+// Protect all routes
+router.use(protect);
 
-// GET route for the frontend to fetch the escrow list and IDs
-router.get('/', protect, getEscrows);
-
-router.post('/claim-milestone', protect, restrictTo('STARTUP_FOUNDER'), claimMilestone);
-router.post('/approve', protect, restrictTo('NODAL_OFFICER'), approveMilestone);
-router.post('/reject', protect, restrictTo('NODAL_OFFICER'), rejectMilestone);
-
-// Report Routes
-router.get('/:escrowId/milestone/:milestoneCode/report', protect, getReport);
-router.post('/:escrowId/milestone/:milestoneCode/report', protect, restrictTo('STARTUP_FOUNDER'), submitReport);
-router.put('/:escrowId/milestone/:milestoneCode/analyze', protect, restrictTo('NODAL_OFFICER'), submitAnalysis);
+router.post('/chat', restrictTo('NODAL_OFFICER'), chatWithAssistant);
 
 module.exports = router;

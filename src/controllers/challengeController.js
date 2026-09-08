@@ -98,18 +98,18 @@ exports.publishChallenge = async (req, res) => {
         // Find all active Startup Founders
         const startups = await User.find({ role: 'STARTUP_FOUNDER', isActive: true });
         
-        if (startups.length > 0 && challenge.extractedKPIs?.kpiVector) {
-            const startupVectors = startups.map(s => ({
-                proposalId: s._id.toString(), // Repurposing proposalId for userId in the generic ML wrapper
-                vector: s.kpiVector || []
+        if (startups.length > 0 && (challenge.scopeOfWork || challenge.problemStatementRaw)) {
+            const startupProposals = startups.map(s => ({
+                id: s._id.toString(), 
+                text: s.profileDescription || "Technology startup looking to build innovative solutions."
             }));
 
-            // ML Call: Vector Search against Startup Profiles
-            const mlResponse = await vectorSearch(challenge.extractedKPIs.kpiVector, startupVectors);
+            // ML Call: Semantic Triage against Startup Profiles
+            const mlResponse = await semanticTriage(challenge.scopeOfWork || challenge.problemStatementRaw, startupProposals);
             
-            if (mlResponse && mlResponse.ranked) {
-                // Filter matches > 80% (0.8)
-                const highMatches = mlResponse.ranked.filter(r => r.matchScore >= 0.8);
+            if (mlResponse && mlResponse.matches) {
+                // Filter matches >= 80% (0.8)
+                const highMatches = mlResponse.matches.filter(r => r.score >= 0.8);
                 
                 for (const match of highMatches) {
                     const startupUser = startups.find(s => s._id.toString() === match.id);
@@ -117,16 +117,48 @@ exports.publishChallenge = async (req, res) => {
                         // Create Notification
                         await Notification.create({
                             recipient: startupUser._id,
-                            title: 'ðŸŽ¯ New Matching Challenge Released!',
+                            title: '🎯 New Matching Challenge Released!',
                             message: `A new Problem Statement (${challenge.psNumber}) matching your profile has been released. You have 7 days to submit your proposal. Deadline: ${deadline.toDateString()}`,
                             challengeId: challenge._id
                         });
 
                         // Send Email Notification
+                        const kpiList = challenge.extractedKPIs?.metrics?.map(k => `- ${k.metric}: ${k.target}`).join('\n') || 'None specified.';
+                        
+                        const emailBody = `
+Hello ${startupUser.name},
+
+A new Official Problem Statement (${challenge.psNumber}) matching your startup's profile (${(match.score*100).toFixed(0)}% match) has just been published by the Department of Innovation.
+
+=======================================================
+GOVERNMENT OF MAHARASHTRA
+OFFICIAL PROBLEM STATEMENT DRAFT
+=======================================================
+
+1. SUBJECT TITLE:
+${challenge.title}
+
+2. SCOPE OF WORK & PROBLEM DESCRIPTION:
+${challenge.scopeOfWork}
+
+3. KEY PERFORMANCE INDICATORS (KPIs):
+${kpiList}
+
+4. ALLOCATED PILOT BUDGET:
+₹ ${challenge.pilotBudgetInr ? challenge.pilotBudgetInr.toLocaleString('en-IN') : 'TBD'}
+
+=======================================================
+
+You have until ${deadline.toDateString()} to submit your proposal via the GovInnovateBridge portal.
+
+Regards,
+GovInnovateBridge Matchmaking Engine
+                        `.trim();
+
                         await sendEmail(
                             startupUser.email,
-                            'ðŸŽ¯ GovInnovateBridge: New Matching Challenge!',
-                            `Hello ${startupUser.name},\n\nA new Problem Statement (${challenge.psNumber}) matching your startup's KPIs (${(match.score*100).toFixed(0)}% match) has been published.\n\nYou have 7 days to submit your proposal.\n\nRegards,\nGovInnovateBridge Team`
+                            `🎯 OFFICIAL MATCH: New Problem Statement Released - ${challenge.psNumber}`,
+                            emailBody
                         );
                     }
                 }
