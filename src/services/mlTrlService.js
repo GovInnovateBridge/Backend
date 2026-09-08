@@ -1,4 +1,4 @@
-﻿const axios = require('axios');
+const axios = require('axios');
 const FormData = require('form-data');
 
 const ML_BASE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
@@ -12,20 +12,22 @@ async function withFallback(apiCallPromise, fallbackValue, operationName) {
     try {
         return await apiCallPromise;
     } catch (error) {
-        console.warn(`[ML Circuit Breaker] ${operationName} failed. Using fallback.`);
+        console.error(`\n[ERROR - ML Circuit Breaker] ${operationName} failed!`);
         if (error.code === 'ECONNREFUSED') {
-            console.warn(`   -> ML Server unreachable at ${ML_BASE_URL}`);
+            console.error(`   -> ML Server unreachable at ${ML_BASE_URL}`);
         } else {
-            console.warn(`   -> ${error.response?.data?.detail || error.message}`);
+            console.error(`   -> API Error:`, error.response?.data || error.message);
+            console.error(`   -> Hint: Check if your GEMINI_API_KEY in ml-sahyog/.env is valid.`);
         }
+        console.warn(`   -> Returning fallback data to prevent crash.\n`);
         return fallbackValue;
     }
 }
 
 // ============================================================================
-// 1. GENERATE QUESTIONS — POST /generate-questions
+// 1. GENERATE QUESTIONS - POST /generate-questions
 // ============================================================================
-exports.generateQuestions = async (startupPitch, claimedTrl) => {
+exports.generateQuestions = async (startupPitch, claimedTrl, domain = 'SOFTWARE') => {
     const fallback = {
         questions: [
             "Describe the core architecture of your solution.",
@@ -38,7 +40,8 @@ exports.generateQuestions = async (startupPitch, claimedTrl) => {
 
     const call = axios.post(`${ML_BASE_URL}/generate-questions`, {
         startup_pitch: startupPitch,
-        claimed_trl: claimedTrl
+        claimed_trl: claimedTrl,
+        domain: domain
     }, { timeout: TIMEOUT_MS }).then(res => res.data);
 
     return await withFallback(call, fallback, "generateQuestions");

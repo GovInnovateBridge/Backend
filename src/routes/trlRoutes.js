@@ -9,11 +9,11 @@ const User = require('../models/User');
 // Standalone endpoint for the TRL Quiz page
 router.post('/generate-questions', verifyToken, verifyStartup, async (req, res) => {
     try {
-        const { startup_pitch, claimed_trl } = req.body;
+        const { startup_pitch, claimed_trl, domain } = req.body;
         if (!startup_pitch || !claimed_trl) {
             return res.status(400).json({ message: 'startup_pitch and claimed_trl are required.' });
         }
-        const result = await mlTrlService.generateQuestions(startup_pitch, claimed_trl);
+        const result = await mlTrlService.generateQuestions(startup_pitch, claimed_trl, domain || 'SOFTWARE');
         res.status(200).json(result);
     } catch (error) {
         console.error("Error generating TRL questions:", error);
